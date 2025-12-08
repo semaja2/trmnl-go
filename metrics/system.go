@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/route"
 )
 
 // SystemMetrics holds system information
@@ -292,26 +294,154 @@ func (m SystemMetrics) String() string {
 	return fmt.Sprintf("Battery: %.1f%%, WiFi: %d dBm", m.BatteryVoltage, m.RSSI)
 }
 
+// getDefaultRouteInterface returns the interface name used for the default route
+func getDefaultRouteInterface() string {
+	switch runtime.GOOS {
+	case "darwin", "freebsd", "openbsd", "netbsd":
+		return getDefaultRouteInterfaceBSD()
+	case "linux":
+		return getDefaultRouteInterfaceLinux()
+	case "windows":
+		return getDefaultRouteInterfaceWindows()
+	default:
+		return ""
+	}
+}
+
+// getDefaultRouteInterfaceBSD uses golang.org/x/net/route for BSD-like systems (macOS, *BSD)
+func getDefaultRouteInterfaceBSD() string {
+	rib, err := route.FetchRIB(0, route.RIBTypeRoute, 0)
+	if err != nil {
+		return ""
+	}
+
+	msgs, err := route.ParseRIB(route.RIBTypeRoute, rib)
+	if err != nil {
+		return ""
+	}
+
+	for _, msg := range msgs {
+		rm, ok := msg.(*route.RouteMessage)
+		if !ok {
+			continue
+		}
+
+		// Look for default route (0.0.0.0/0 or ::/0)
+		isDefault := false
+		for _, addr := range rm.Addrs {
+			if addr == nil {
+				continue
+			}
+			// Check if it's a default destination (0.0.0.0)
+			if ipnet, ok := addr.(*route.Inet4Addr); ok {
+				if ipnet.IP == [4]byte{0, 0, 0, 0} {
+					isDefault = true
+					break
+				}
+			}
+		}
+
+		if isDefault && rm.Index > 0 {
+			// Get interface by index
+			iface, err := net.InterfaceByIndex(rm.Index)
+			if err == nil {
+				return iface.Name
+			}
+		}
+	}
+
+	return ""
+}
+
+// getDefaultRouteInterfaceLinux reads /proc/net/route for Linux
+func getDefaultRouteInterfaceLinux() string {
+	// For Linux, we'll use a simple fallback approach
+	// Read the first non-loopback interface with a valid address
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil || len(addrs) == 0 {
+			continue
+		}
+		// Check if it has a non-link-local address
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok {
+				if ipnet.IP.To4() != nil && !ipnet.IP.IsLoopback() && !ipnet.IP.IsLinkLocalUnicast() {
+					return iface.Name
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// getDefaultRouteInterfaceWindows uses net.Interfaces for Windows
+func getDefaultRouteInterfaceWindows() string {
+	// For Windows, fallback to first valid interface
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if len(iface.HardwareAddr) > 0 {
+			return iface.Name
+		}
+	}
+
+	return ""
+}
+
 // GetMACAddress returns the MAC address of the primary network interface (uppercase)
+// If ifaceName is provided, uses that interface; otherwise uses default route interface
 func GetMACAddress() (string, error) {
+	return GetMACAddressForInterface("")
+}
+
+// GetMACAddressForInterface returns the MAC address for a specific interface
+func GetMACAddressForInterface(ifaceName string) (string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return "", fmt.Errorf("failed to get network interfaces: %w", err)
 	}
 
-	// Look for the primary interface (first non-loopback, up interface with a MAC)
+	// If no interface specified, try to get default route interface
+	if ifaceName == "" {
+		ifaceName = getDefaultRouteInterface()
+	}
+
+	// If we have a specific interface name, look for it
+	if ifaceName != "" {
+		for _, iface := range interfaces {
+			if iface.Name == ifaceName {
+				if len(iface.HardwareAddr) > 0 {
+					return strings.ToUpper(iface.HardwareAddr.String()), nil
+				}
+				return "", fmt.Errorf("interface %s has no MAC address", ifaceName)
+			}
+		}
+		return "", fmt.Errorf("interface %s not found", ifaceName)
+	}
+
+	// Fallback: first non-loopback, up interface with a MAC
 	for _, iface := range interfaces {
-		// Skip loopback and interfaces that are down
 		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
 			continue
 		}
-
-		// Skip interfaces without a hardware address
 		if len(iface.HardwareAddr) == 0 {
 			continue
 		}
-
-		// Return the first valid MAC address in uppercase
 		mac := strings.ToUpper(iface.HardwareAddr.String())
 		if mac != "" {
 			return mac, nil
@@ -323,6 +453,12 @@ func GetMACAddress() (string, error) {
 
 // GetPrimaryInterfaceName returns the name of the primary network interface
 func GetPrimaryInterfaceName() string {
+	// Try default route interface first
+	if iface := getDefaultRouteInterface(); iface != "" {
+		return iface
+	}
+
+	// Fallback to first valid interface
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return "unknown"

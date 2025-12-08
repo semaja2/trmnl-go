@@ -12,6 +12,18 @@ package display
 static NSWindow* mainWindow = nil;
 static NSImageView* imageView = nil;
 
+// Window delegate to handle close events
+@interface WindowDelegate : NSObject <NSWindowDelegate>
+@end
+
+@implementation WindowDelegate
+- (void)windowWillClose:(NSNotification *)notification {
+    [NSApp terminate:nil];
+}
+@end
+
+static WindowDelegate* windowDelegate = nil;
+
 void* createFloatingWindow(int width, int height, bool alwaysOnTop) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
@@ -26,6 +38,10 @@ void* createFloatingWindow(int width, int height, bool alwaysOnTop) {
 
         [mainWindow setTitle:@"TRMNL Display"];
         [mainWindow setBackgroundColor:[NSColor blackColor]];
+
+        // Set delegate to handle window close
+        windowDelegate = [[WindowDelegate alloc] init];
+        [mainWindow setDelegate:windowDelegate];
 
         if (alwaysOnTop) {
             [mainWindow setLevel:NSFloatingWindowLevel];
@@ -57,9 +73,36 @@ void updateWindowImage(unsigned char* imageData, int length) {
     });
 }
 
+void setupMenuBar() {
+    // Create main menu bar
+    NSMenu* mainMenu = [[NSMenu alloc] init];
+
+    // App menu
+    NSMenu* appMenu = [[NSMenu alloc] init];
+    NSMenuItem* appMenuItem = [[NSMenuItem alloc] init];
+    [appMenuItem setSubmenu:appMenu];
+
+    // Quit menu item
+    NSString* quitTitle = @"Quit TRMNL";
+    NSMenuItem* quitItem = [[NSMenuItem alloc] initWithTitle:quitTitle
+                                                      action:@selector(terminate:)
+                                               keyEquivalent:@"q"];
+    [appMenu addItem:quitItem];
+
+    // Add app menu to main menu
+    [mainMenu addItem:appMenuItem];
+
+    // Set the menu bar
+    [NSApp setMainMenu:mainMenu];
+}
+
 void runNativeApp() {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+    // Setup menu bar for Cmd+Q support
+    setupMenuBar();
+
     [NSApp run];
 }
 

@@ -22,7 +22,14 @@ cd trmnl-go
 ./build.sh
 ```
 
-**macOS 15.x+:** Code signing is required. The `build.sh` script handles this automatically.
+**macOS App Bundle:**
+```bash
+./bundle-macos.sh
+open TRMNL.app
+# Or install: cp -r TRMNL.app /Applications/
+```
+
+**macOS 15.x+:** Code signing is required. The build scripts handle this automatically.
 
 ## Quick Start
 
@@ -79,21 +86,24 @@ Config stored at `~/.config/trmnl/config.json`:
 
 ## How It Works
 
-1. Auto-detects MAC address from primary network interface
+1. Auto-detects MAC address from default route interface (or generates random MAC if unavailable)
 2. Authenticates with TRMNL API
-3. Fetches display content from `/api/display`
-4. Downloads and renders image
-5. Reports system metrics (battery, WiFi)
-6. Auto-refreshes at server-specified interval
+3. Sends screen dimensions and system info in request headers
+4. Fetches display content from `/api/display`
+5. Downloads and renders image
+6. Reports system metrics (battery, WiFi)
+7. Auto-refreshes at server-specified interval
 
 ## System Metrics
 
-- **MAC Address**: Auto-detected from en0/eth0/wlan0
+- **MAC Address**: Auto-detected from default route interface, or random MAC if unavailable
 - **Battery**: Real percentage via OS (100% if no battery)
 - **WiFi Signal**: Real dBm via OS (-50 dBm if no WiFi)
+- **Screen Dimensions**: Sent to server in X-Screen-Width/X-Screen-Height headers
 
 ## API Headers
 
+**Request headers sent to server:**
 ```
 access-token / ID: Authentication
 battery-voltage: 0-100
@@ -102,6 +112,19 @@ User-Agent: trmnl-go-virtual/1.0.0
 X-Device-Type: virtual
 X-OS: darwin/linux/windows
 X-Arch: amd64/arm64
+X-Screen-Width: Window width
+X-Screen-Height: Window height
+```
+
+**Optional response fields from server:**
+```json
+{
+  "image_url": "https://...",
+  "filename": "display.png",
+  "refresh_rate": 60,
+  "width": 800,
+  "height": 480
+}
 ```
 
 ## Development

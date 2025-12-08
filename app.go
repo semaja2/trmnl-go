@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"crypto/rand"
+
 	"github.com/semaja2/trmnl-go/api"
 	"github.com/semaja2/trmnl-go/config"
 	"github.com/semaja2/trmnl-go/display"
@@ -20,17 +22,18 @@ const Version = "1.0.0"
 
 var (
 	// Command-line flags
-	apiKey      = flag.String("api-key", "", "TRMNL API key (for usetrmnl.com)")
-	deviceID    = flag.String("device-id", "", "Device ID (for self-hosted servers)")
-	baseURL     = flag.String("base-url", "", "Base URL for TRMNL API")
-	width       = flag.Int("width", 0, "Window width")
-	height      = flag.Int("height", 0, "Window height")
-	darkMode    = flag.Bool("dark", false, "Enable dark mode (invert colors)")
-	alwaysOnTop = flag.Bool("always-on-top", false, "Keep window always on top (macOS only)")
-	useFyne     = flag.Bool("use-fyne", false, "Force use of Fyne GUI (default: native window on macOS)")
-	verbose     = flag.Bool("verbose", false, "Enable verbose logging")
-	showVersion = flag.Bool("version", false, "Show version information")
-	saveConfig  = flag.Bool("save", false, "Save current settings to config file")
+	apiKey       = flag.String("api-key", "", "TRMNL API key (for usetrmnl.com)")
+	deviceID     = flag.String("device-id", "", "Device ID (for self-hosted servers)")
+	netInterface = flag.String("interface", "", "Network interface for MAC address (e.g. en0, eth0)")
+	baseURL      = flag.String("base-url", "", "Base URL for TRMNL API")
+	width        = flag.Int("width", 0, "Window width")
+	height       = flag.Int("height", 0, "Window height")
+	darkMode     = flag.Bool("dark", false, "Enable dark mode (invert colors)")
+	alwaysOnTop  = flag.Bool("always-on-top", false, "Keep window always on top (macOS only)")
+	useFyne      = flag.Bool("use-fyne", false, "Force use of Fyne GUI (default: native window on macOS)")
+	verbose      = flag.Bool("verbose", false, "Enable verbose logging")
+	showVersion  = flag.Bool("version", false, "Show version information")
+	saveConfig   = flag.Bool("save", false, "Save current settings to config file")
 )
 
 // DisplayWindow interface for both Fyne and native windows
@@ -54,6 +57,23 @@ type App struct {
 
 func isRunningOnMacOS() bool {
 	return runtime.GOOS == "darwin"
+}
+
+// generateRandomMAC generates a random MAC address
+func generateRandomMAC() string {
+	buf := make([]byte, 6)
+	_, err := rand.Read(buf)
+	if err != nil {
+		// Fallback to timestamp-based if random fails
+		return fmt.Sprintf("02:00:00:%02X:%02X:%02X",
+			byte(time.Now().Unix()>>16),
+			byte(time.Now().Unix()>>8),
+			byte(time.Now().Unix()))
+	}
+	// Set locally administered bit (bit 1 of first byte)
+	buf[0] = (buf[0] | 0x02) & 0xFE
+	return fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X",
+		buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
 }
 
 // runGUIApp starts the GUI application
@@ -109,15 +129,21 @@ func runGUIApp() {
 
 	// Auto-detect MAC address as Device ID if not set
 	if cfg.DeviceID == "" && cfg.APIKey == "" {
-		mac, err := metrics.GetMACAddress()
+		mac, err := metrics.GetMACAddressForInterface(*netInterface)
 		if err != nil {
 			log.Printf("Warning: Could not detect MAC address: %v", err)
-			log.Println("Using random device ID instead")
-			cfg.DeviceID = "virtual-trmnl-" + time.Now().Format("20060102150405")
+			log.Println("Generating random MAC address instead")
+			cfg.DeviceID = generateRandomMAC()
+			if cfg.Verbose {
+				log.Printf("Generated random MAC address: %s", cfg.DeviceID)
+			}
 		} else {
 			cfg.DeviceID = mac
 			if cfg.Verbose {
 				ifaceName := metrics.GetPrimaryInterfaceName()
+				if *netInterface != "" {
+					ifaceName = *netInterface
+				}
 				log.Printf("Auto-detected Device ID from %s: %s", ifaceName, mac)
 			}
 		}

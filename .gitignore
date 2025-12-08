@@ -35,3 +35,4 @@ config.json
 # Build artifacts
 dist/
 build/
+*.app/
