@@ -74,12 +74,12 @@ jobs:
       
       - name: Build macOS app for AMD64 (Intel)
         run: |
-          fyne package -os darwin/amd64 -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
+          fyne package -os darwin -arch amd64 -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
           mv TRMNL.app TRMNL-amd64.app
       
       - name: Build macOS app for ARM64 (Apple Silicon)
         run: |
-          fyne package -os darwin/arm64 -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
+          fyne package -os darwin -arch arm64 -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
           mv TRMNL.app TRMNL-arm64.app
       
       - name: Package .app bundles into tar.gz
