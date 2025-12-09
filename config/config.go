@@ -16,8 +16,14 @@ type Config struct {
 	// If not set, will auto-detect primary network interface MAC address
 	DeviceID string `json:"device_id,omitempty"`
 
-	// BaseURL for the TRMNL API (default: https://usetrmnl.com)
+	// FriendlyID is the human-readable device name from setup
+	FriendlyID string `json:"friendly_id,omitempty"`
+
+	// BaseURL for the TRMNL API (default: https://trmnl.app)
 	BaseURL string `json:"base_url,omitempty"`
+
+	// Model name for the device (e.g., "TRMNL", "virtual", "virtual-hd")
+	Model string `json:"model,omitempty"`
 
 	// WindowWidth for the display window
 	WindowWidth int `json:"window_width,omitempty"`
@@ -31,15 +37,18 @@ type Config struct {
 	// AlwaysOnTop keeps the window above all others
 	AlwaysOnTop bool `json:"always_on_top,omitempty"`
 
+	// MirrorMode uses /api/current_screen instead of device-specific display
+	MirrorMode bool `json:"mirror_mode,omitempty"`
+
 	// Verbose enables detailed logging
 	Verbose bool `json:"verbose,omitempty"`
 }
 
 const (
-	DefaultBaseURL     = "https://usetrmnl.com"
-	DefaultWindowWidth = 800
+	DefaultBaseURL      = "https://trmnl.app"
+	DefaultWindowWidth  = 800
 	DefaultWindowHeight = 480
-	ConfigFileName     = "config.json"
+	ConfigFileName      = "config.json"
 )
 
 // Load reads configuration from file and environment variables
