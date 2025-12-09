@@ -36,12 +36,12 @@ jobs:
           fyne-cross linux --arch=amd64,arm64 --app-version=${{ github.event.release.tag_name }} --app-id=net.semaja2.trmnl
           fyne-cross windows --arch=amd64,arm64 --app-version=${{ github.event.release.tag_name }} --app-id=net.semaja2.trmnl
       
-      - name: Upload Linux/Windows binaries to release
+      - name: Upload binaries to release
         run: |
           find fyne-cross/dist -type f \( -name "*.exe" -o -name "*.tar.gz" -o -name "*.zip" \) 2>/dev/null | while read file; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
-              gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
+              gh release upload "${{ github.event.release.tag_name }}" "$file" --clobber
             fi
           done
         env:
@@ -69,21 +69,26 @@ jobs:
       - name: Install fyne CLI
         run: go install fyne.io/fyne/v2/cmd/fyne@latest
       
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+      
       - name: Add Go bin to PATH
         run: echo "$HOME/go/bin" >> $GITHUB_PATH
       
       - name: Build macOS binary
         run: |
           # Build natively on macOS
-          fyne package -os darwin -icon Icon.png -appID net.semaja2.trmnl -appVersion ${{ github.event.release.tag_name }}
+          fyne-cross darwin --arch=amd64,arm64 --app-version=${{ github.event.release.tag_name }} --app-id=net.semaja2.trmnl
       
       - name: Create macOS archive
         run: |
           # Package the .app into a tar.gz
-          tar -czf TRMNL-macOS-amd64.tar.gz *.app
+          tar -czf TRMNL-macOS-amd64.tar.gz fyne-cross/dist/darwin-amd64/*.app
+          tar -czf TRMNL-macOS-arm64.tar.gz fyne-cross/dist/darwin-arm64/*.app
       
       - name: Upload macOS binaries to release
         run: |
           gh release upload ${{ github.event.release.tag_name }} TRMNL-macOS-amd64.tar.gz --clobber
+          gh release upload ${{ github.event.release.tag_name }} TRMNL-macOS-arm64.tar.gz --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
