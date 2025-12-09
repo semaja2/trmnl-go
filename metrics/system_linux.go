@@ -1,12 +1,12 @@
-//go:build !darwin
+//go:build linux
 
 package metrics
 
 import (
+	"bufio"
 	"fmt"
 	"net"
-	"os/exec"
-	"runtime"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -58,54 +58,62 @@ func GetPrimaryInterfaceName() string {
 		}
 	}
 
-	if runtime.GOOS == "windows" {
-		return "Ethernet"
-	}
 	return "eth0"
 }
 
-// getWiFiSignal returns WiFi signal strength (stub for non-macOS platforms)
+// getWiFiSignal returns WiFi signal strength (RSSI in dBm) by reading /proc/net/wireless
 func getWiFiSignal() int {
-	// Platform-specific implementation would go here
-	// For now, return a default value
+	// Try reading from /proc/net/wireless
+	file, err := os.Open("/proc/net/wireless")
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	// Skip the first two header lines
+	if !scanner.Scan() || !scanner.Scan() {
+		return 0
+	}
+
+	// Read wireless interface data
+	// Format: interface: status link level noise
+	// Example: wlan0: 0000   70.  -40.  -256
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+
+		// Need at least 4 fields: interface, status, link, level
+		if len(fields) >= 4 {
+			// The signal level is in the 4th field (index 3)
+			// It's typically in dBm and has a trailing dot
+			levelStr := strings.TrimSuffix(fields[3], ".")
+			if level, err := strconv.ParseFloat(levelStr, 64); err == nil {
+				return int(level)
+			}
+		}
+	}
+
 	return 0
 }
 
 // getBatteryPercentage returns battery percentage (0-100) or -1 if unavailable
 func getBatteryPercentage() float64 {
-	switch runtime.GOOS {
-	case "linux":
-		// Try reading from /sys/class/power_supply/BAT0/capacity
-		output, err := exec.Command("cat", "/sys/class/power_supply/BAT0/capacity").Output()
-		if err != nil {
-			// Try BAT1
-			output, err = exec.Command("cat", "/sys/class/power_supply/BAT1/capacity").Output()
-			if err != nil {
-				return -1
-			}
-		}
-		percentStr := strings.TrimSpace(string(output))
-		if percent, err := strconv.ParseFloat(percentStr, 64); err == nil {
-			return percent
-		}
-		return -1
-
-	case "windows":
-		// Use WMIC to get battery status
-		output, err := exec.Command("WMIC", "Path", "Win32_Battery", "Get", "EstimatedChargeRemaining").Output()
+	// Try reading from /sys/class/power_supply/BAT0/capacity
+	data, err := os.ReadFile("/sys/class/power_supply/BAT0/capacity")
+	if err != nil {
+		// Try BAT1
+		data, err = os.ReadFile("/sys/class/power_supply/BAT1/capacity")
 		if err != nil {
 			return -1
 		}
-		lines := strings.Split(string(output), "\n")
-		if len(lines) > 1 {
-			percentStr := strings.TrimSpace(lines[1])
-			if percent, err := strconv.ParseFloat(percentStr, 64); err == nil {
-				return percent
-			}
-		}
-		return -1
-
-	default:
-		return -1
 	}
+
+	percentStr := strings.TrimSpace(string(data))
+	if percent, err := strconv.ParseFloat(percentStr, 64); err == nil {
+		return percent
+	}
+
+	return -1
 }

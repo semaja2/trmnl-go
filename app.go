@@ -318,9 +318,7 @@ func (a *App) refreshLoop() {
 		setupResp, err := a.client.FetchSetup(a.config.DeviceID)
 		if err != nil {
 			log.Printf("Setup failed: %v", err)
-			a.showErrorScreen("Registration Failed",
-				fmt.Sprintf("Could not register device with MAC %s.\n\nError: %v\n\nPlease check your network connection and try again.",
-					a.config.DeviceID, err))
+			a.showErrorScreen("Registration Failed", fmt.Sprintf("Error: %v", a.config.DeviceID, err))
 			a.window.UpdateStatus("Registration failed - see display for details")
 
 			// Keep window open with error displayed
