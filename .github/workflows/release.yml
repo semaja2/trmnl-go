@@ -115,22 +115,33 @@ jobs:
       - name: Install Fyne CLI
         run: go install fyne.io/fyne/v2/cmd/fyne@latest
       
-      - name: Build macOS app for ARM64 (Apple Silicon)
+      - name: Build AMD64 binary
         run: |
-          fyne package -os darwin  -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
-          mv TRMNL.app TRMNL-arm64.app
+          GOOS=darwin GOARCH=amd64 go build -o trmnl-amd64 .
       
-      - name: Package .app bundles into tar.gz
+      - name: Build ARM64 binary
         run: |
-          tar -czf TRMNL-darwin-arm64.tar.gz TRMNL-arm64.app
-          
-          echo "Created archives:"
+          GOOS=darwin GOARCH=arm64 go build -o trmnl-arm64 .
+      
+      - name: Create universal binary
+        run: |
+          lipo -create -output trmnl trmnl-amd64 trmnl-arm64
+          lipo -info trmnl
+          chmod +x trmnl
+      
+      - name: Package as .app bundle
+        run: |
+          fyne package -os darwin -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL -executable trmnl
+      
+      - name: Package into tar.gz
+        run: |
+          tar -czf TRMNL-darwin-universal.tar.gz TRMNL.app
           ls -lh *.tar.gz
       
-      - name: Upload macOS apps to release
+      - name: Upload macOS app to release
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
-            TRMNL-darwin-arm64.tar.gz \
+            TRMNL-darwin-universal.tar.gz \
             --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
