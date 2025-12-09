@@ -14,7 +14,6 @@ import (
 
 	"github.com/semaja2/trmnl-go/api"
 	"github.com/semaja2/trmnl-go/config"
-	"github.com/semaja2/trmnl-go/display"
 	"github.com/semaja2/trmnl-go/metrics"
 	"github.com/semaja2/trmnl-go/models"
 	"github.com/semaja2/trmnl-go/render"
@@ -244,19 +243,8 @@ func runGUIApp() {
 		fmt.Println("=====================================")
 	}
 
-	// Create display window
-	// Use native window on macOS by default (unless -use-fyne flag is set)
-	if isRunningOnMacOS() && !*useFyne {
-		if app.verbose {
-			fmt.Println("[App] Using native macOS window")
-		}
-		app.window = display.NewNativeWindow(cfg, app.verbose)
-	} else {
-		if app.verbose && isRunningOnMacOS() {
-			fmt.Println("[App] Using Fyne window (forced via -use-fyne flag)")
-		}
-		app.window = display.NewWindow(cfg, app.verbose)
-	}
+	// Create display window (platform-specific logic in app_darwin.go / app_other.go)
+	app.window = createWindow(cfg, *useFyne, app.verbose)
 
 	// Set up signal handling for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
