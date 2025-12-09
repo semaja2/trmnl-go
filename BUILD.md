@@ -1,237 +1,233 @@
 # Building TRMNL Virtual Display
 
-This document describes how to build TRMNL Virtual Display for different platforms.
+This document describes how to build TRMNL Virtual Display for different platforms using `fyne-cross`.
 
-## Quick Build (Current Platform)
+## Quick Start
 
-For quick local development builds:
-
-```bash
-./build.sh
-```
-
-This will build for your current platform and automatically code sign on macOS.
-
-## macOS Production Build
-
-The `build-macos.sh` script creates production-ready macOS builds with proper app bundles:
-
-**Basic Build:**
+**Prerequisites:**
+- Go 1.22+
+- Docker (for fyne-cross cross-compilation)
 
 ```bash
-./build-macos.sh
-```
-
-This creates:
-- Universal macOS binary (Intel + Apple Silicon)
-- macOS App Bundle (`build/TRMNL.app`)
-- Distribution ZIP (`dist/TRMNL-1.0.0-macos.zip`)
-
-### With Code Signing
-
-To create a properly signed macOS application:
-
-```bash
-./build-macos.sh --sign "Developer ID Application: Your Name (TEAMID)"
-```
-
-**Finding your signing identity:**
-```bash
-security find-identity -v -p codesigning
-```
-
-### With DMG Installer
-
-To create a macOS DMG installer:
-
-```bash
-./build-macos.sh --sign "Developer ID Application: Your Name (TEAMID)" --dmg
-```
-
-This creates `dist/TRMNL-1.0.0.dmg` with:
-- App bundle
-- Applications folder shortcut
-- Proper code signing (if identity provided)
-
-## Platform-Specific Builds
-
-### macOS
-
-**Requirements:**
-- Go 1.24+
-- Xcode Command Line Tools
-- macOS 10.13+
-
-**Build:**
-```bash
+# Local development build (current platform only)
 go build -o trmnl-go
+
+# Cross-platform build (all platforms)
+./build-all.sh
+
+# Or build for specific platform
+./build-all.sh macos    # macOS Intel + Apple Silicon
+./build-all.sh windows  # Windows x64 + ARM64
+./build-all.sh linux    # Linux x64 + ARM64
 ```
 
-**Universal Binary:**
-The build script automatically creates a universal binary supporting both Intel and Apple Silicon Macs.
+## Why fyne-cross?
 
-### Windows
+`fyne-cross` uses Docker containers to provide consistent build environments for all platforms, handling:
+- **Native dependencies**: CoreWLAN (macOS), WLAN API (Windows), wireless drivers (Linux)
+- **CGO compilation**: Platform-specific C code for WiFi and battery APIs
+- **Cross-compilation**: Build for all platforms from any host OS
+- **Consistent builds**: Same build environment regardless of host system
 
-**Requirements:**
-- Go 1.24+
-- Windows 10+
-- GCC compiler (MinGW-w64 for CGO support)
+## Build Script
 
-**Build:**
+The `build-all.sh` script:
+1. Checks for and installs `fyne-cross` if needed
+2. Builds for specified platform(s) with proper architectures
+3. Outputs binaries to `fyne-cross/dist/`
+
+**Usage:**
 ```bash
-go build -o trmnl-go.exe
+./build-all.sh [all|macos|windows|linux]
 ```
 
-**Note:** Cross-compilation from macOS/Linux to Windows is not supported due to CGO dependencies (Fyne GUI toolkit). You must build natively on Windows.
-
-### Linux
-
-**Requirements:**
-- Go 1.24+
-- X11 development libraries
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install libgl1-mesa-dev xorg-dev
-go build -o trmnl-go
-```
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install mesa-libGL-devel libXcursor-devel libXrandr-devel libXinerama-devel libXi-devel
-go build -o trmnl-go
-```
-
-**Note:** Cross-compilation from macOS to Linux is not supported due to CGO dependencies.
+**Platforms built:**
+- **macOS**: `darwin-amd64`, `darwin-arm64` (Intel + Apple Silicon)
+- **Windows**: `windows-amd64`, `windows-arm64`
+- **Linux**: `linux-amd64`, `linux-arm64`
 
 ## Build Output
 
-### Directory Structure
+Cross-platform builds are saved to `fyne-cross/dist/`:
 
 ```
-trmnl-go/
-├── build/              # Build artifacts
-│   ├── TRMNL.app      # macOS app bundle
-│   ├── trmnl-go-darwin-amd64    # Intel binary
-│   ├── trmnl-go-darwin-arm64    # ARM64 binary
-│   └── trmnl-go-darwin-universal # Universal binary
-└── dist/               # Distribution archives
-    ├── TRMNL-1.0.0-macos.zip
-    └── TRMNL-1.0.0.dmg (if --dmg flag used)
+fyne-cross/dist/
+├── darwin-amd64/
+│   └── trmnl-go         # macOS Intel binary
+├── darwin-arm64/
+│   └── trmnl-go         # macOS Apple Silicon binary
+├── windows-amd64/
+│   └── trmnl-go.exe     # Windows x64 executable
+├── windows-arm64/
+│   └── trmnl-go.exe     # Windows ARM64 executable
+├── linux-amd64/
+│   └── trmnl-go         # Linux x64 binary
+└── linux-arm64/
+    └── trmnl-go         # Linux ARM64 binary
 ```
 
-### macOS App Bundle Structure
+## Native Dependencies Handled by fyne-cross
 
+### macOS
+- **CoreWLAN framework**: Native WiFi signal detection (RSSI)
+- **IOKit framework**: Native battery percentage detection
+- **Automatic frameworks**: Linked via `#cgo LDFLAGS: -framework CoreWLAN -framework IOKit`
+
+### Windows
+- **WLAN API**: Native WiFi signal detection via `wlanapi.dll`
+- **Windows Power API**: Battery status via `GetSystemPowerStatus()`
+- **Libraries**: Automatically linked via `#cgo LDFLAGS: -lwlanapi -lole32`
+
+### Linux
+- **No external dependencies**: Uses `/proc/net/wireless` and `/sys/class/power_supply/`
+- **Pure Go implementation**: Direct file reading, no CGO required
+
+## Platform-Specific Notes
+
+### macOS
+
+**Running unsigned binaries:**
+```bash
+# Remove quarantine attribute
+xattr -cr trmnl-go
+
+# Or allow in System Settings → Privacy & Security → "Open Anyway"
 ```
-TRMNL.app/
-├── Contents/
-│   ├── Info.plist          # App metadata
-│   ├── MacOS/
-│   │   └── TRMNL           # Universal binary
-│   └── Resources/          # App resources (empty for now)
+
+**For distribution**, you'll need an Apple Developer account for code signing and notarization.
+
+### Windows
+
+**Console output:**
+- Standard builds (from `./build-all.sh`) show console output when run from cmd/PowerShell
+- For GUI-only builds (no console), add `-ldflags="-H=windowsgui"` to build command
+
+**Running:**
+```cmd
+# From Command Prompt (shows output)
+trmnl-go.exe --verbose
+
+# Or just run to see GUI
+trmnl-go.exe
 ```
 
-## Code Signing
+### Linux
 
-### Ad-hoc Signing (Development)
+**Running:**
+```bash
+chmod +x trmnl-go
+./trmnl-go --verbose
+```
 
-The simple `build.sh` script performs ad-hoc signing automatically:
+**Display requirements:**
+- X11 or Wayland
+- No additional packages needed (Fyne handles display automatically)
+
+## Local Development Builds
+
+For quick iteration during development:
 
 ```bash
-codesign --force --deep --sign - trmnl-go
+# Build for current platform only (no Docker needed)
+go build -o trmnl-go
+
+# Run immediately
+./trmnl-go --verbose
+
+# With race detector
+go build -race -o trmnl-go
 ```
 
-This allows the app to run on your local machine without Gatekeeper issues.
-
-### Distribution Signing
-
-For distributing your app, you need:
-
-1. **Apple Developer Account** - $99/year
-2. **Developer ID Application Certificate**
-3. **Notarization** (for macOS 10.15+)
-
-**Full signing workflow:**
-
-```bash
-# 1. Build and sign
-./build-macos.sh --sign "Developer ID Application: Your Name (TEAMID)" --dmg
-
-# 2. Notarize (requires Apple Developer account)
-xcrun notarytool submit dist/TRMNL-1.0.0.dmg \
-    --apple-id "your@email.com" \
-    --team-id "TEAMID" \
-    --password "app-specific-password" \
-    --wait
-
-# 3. Staple notarization ticket
-xcrun stapler staple dist/TRMNL-1.0.0.dmg
-```
+Local builds are faster but won't include all platform-specific optimizations that fyne-cross provides.
 
 ## Troubleshooting
 
-### macOS: "cannot be opened because the developer cannot be verified"
+### Docker not running
 
-**Solution 1:** Use ad-hoc signing
-```bash
-./build.sh
-```
+**Error:** `Cannot connect to the Docker daemon`
 
-**Solution 2:** Allow in System Settings
-```bash
-xattr -cr TRMNL.app
-```
+**Solution:** Start Docker Desktop or Docker daemon before running `./build-all.sh`
 
-Then go to System Settings → Privacy & Security and click "Open Anyway"
+### fyne-cross not found
 
-### Linux: Missing GL libraries
+The build script automatically installs fyne-cross, but you can install manually:
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install libgl1-mesa-dev xorg-dev
-
-# Fedora/RHEL
-sudo dnf install mesa-libGL-devel libXcursor-devel libXrandr-devel
+go install github.com/fyne-io/fyne-cross@latest
 ```
 
-### Windows: CGO errors
+### Build failures
 
-Make sure you're building on Windows natively. Cross-compilation is not supported.
+**Clean Docker cache:**
+```bash
+docker system prune -a
+```
 
-## CI/CD
+**Reinstall fyne-cross:**
+```bash
+go install github.com/fyne-io/fyne-cross@latest
+```
 
-For automated builds in CI/CD pipelines:
+## CI/CD Integration
 
-**GitHub Actions (macOS):**
+**GitHub Actions example:**
+
 ```yaml
-- name: Build
-  run: |
-    ./build-macos.sh
+name: Build
 
-- name: Upload artifacts
-  uses: actions/upload-artifact@v3
-  with:
-    name: trmnl-macos
-    path: dist/*.zip
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      - name: Build all platforms
+        run: ./build-all.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries
+          path: fyne-cross/dist/
 ```
-
-**Note:** Code signing in CI requires securely storing certificates and credentials.
 
 ## Version Management
 
-The version is set in `build-macos.sh`:
+Version is set in `build-all.sh`:
 
 ```bash
 VERSION="1.0.0"
 ```
 
-This version is:
-- Embedded in binaries via `-ldflags "-X main.Version=${VERSION}"`
-- Used in the macOS app bundle Info.plist
-- Included in distribution filenames
-
 To release a new version:
-1. Update `VERSION` in `build-macos.sh`
+1. Update `VERSION` in `build-all.sh`
 2. Update `const Version` in `app.go`
-3. Run `./build-macos.sh --sign "..." --dmg`
-4. Tag the release in git
+3. Run `./build-all.sh`
+4. Tag the release: `git tag v1.0.0 && git push --tags`
+
+## Manual fyne-cross Usage
+
+For advanced users who want fine-grained control:
+
+```bash
+# Build for specific OS and architecture
+fyne-cross darwin -arch=arm64 -app-version=1.0.0 -app-id=net.semaja2.trmnl
+
+# Custom output directory
+fyne-cross windows -output=my-builds/
+
+# With additional build flags
+fyne-cross linux -ldflags="-s -w" -arch=amd64,arm64
+```
+
+See `fyne-cross --help` for all options.

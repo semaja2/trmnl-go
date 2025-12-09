@@ -20,22 +20,27 @@ Virtual TRMNL device in Go that renders dashboard content to a desktop window. R
 
 ## Installation
 
-**Prerequisites:** Go 1.22+
+**Prerequisites:**
+- Go 1.22+
+- Docker (for cross-compilation with fyne-cross)
 
 ```bash
 git clone https://github.com/semaja2/trmnl-go.git
 cd trmnl-go
-./build.sh
+
+# Local development build
+go build -o trmnl-go
+
+# Cross-platform build (all platforms)
+./build-all.sh
+
+# Or build for specific platform
+./build-all.sh macos    # macOS only
+./build-all.sh windows  # Windows only
+./build-all.sh linux    # Linux only
 ```
 
-**macOS Production Build:**
-```bash
-./build-macos.sh
-open build/TRMNL.app
-# Or install: cp -r build/TRMNL.app /Applications/
-```
-
-For detailed build instructions including code signing and DMG creation, see [BUILD.md](BUILD.md).
+**Note:** fyne-cross will be automatically installed if not present. It uses Docker containers to cross-compile for all platforms with native dependencies (CoreWLAN, WLAN API, etc.).
 
 ## Quick Start
 
@@ -225,14 +230,38 @@ Retrieves available device models with specifications (width, height, colors, et
 ## Development
 
 ```bash
-# Build
+# Local development build
 go build -o trmnl-go
 
-# Cross-compile
-GOOS=darwin GOARCH=arm64 go build
-GOOS=linux GOARCH=amd64 go build
-GOOS=windows GOARCH=amd64 go build
+# Run with verbose logging
+./trmnl-go --verbose
+
+# Cross-platform builds using fyne-cross (requires Docker)
+./build-all.sh
+
+# fyne-cross handles all platform-specific dependencies:
+# - macOS: CoreWLAN, IOKit frameworks
+# - Windows: WLAN API, Windows Power API
+# - Linux: /proc/net/wireless, /sys/class/power_supply
 ```
+
+## Build Output
+
+Cross-platform builds are output to `fyne-cross/dist/`:
+- `darwin-amd64/` - macOS Intel binaries
+- `darwin-arm64/` - macOS Apple Silicon binaries
+- `windows-amd64/` - Windows x64 executables
+- `windows-arm64/` - Windows ARM64 executables
+- `linux-amd64/` - Linux x64 binaries
+- `linux-arm64/` - Linux ARM64 binaries
+
+## Console Output on Windows
+
+Windows builds support two modes:
+- **Standard build** (`go build`): Shows console output when run from cmd/PowerShell
+- **GUI build** (`-ldflags="-H=windowsgui"`): No console window (cleaner UX)
+
+The `./build-all.sh` script creates standard builds that show console output for debugging.
 
 ## License
 

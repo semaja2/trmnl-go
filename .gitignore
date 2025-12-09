@@ -36,3 +36,6 @@ config.json
 dist/
 build/
 *.app/
+fyne-cross/
+trmnl-go
+tmp-pkg/
