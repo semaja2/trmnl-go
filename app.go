@@ -14,6 +14,7 @@ import (
 
 	"github.com/semaja2/trmnl-go/api"
 	"github.com/semaja2/trmnl-go/config"
+	"github.com/semaja2/trmnl-go/logging"
 	"github.com/semaja2/trmnl-go/metrics"
 	"github.com/semaja2/trmnl-go/models"
 	"github.com/semaja2/trmnl-go/render"
@@ -38,10 +39,11 @@ var (
 	rotation     = flag.Int("rotation", 0, "Rotate image (degrees: 0, 90, 180, 270, or -90)")
 	mirrorMode   = flag.Bool("mirror", false, "Use mirror mode (show current screen, not device-specific)")
 	setup        = flag.Bool("setup", false, "Run setup to retrieve API key via MAC address")
-	useFyne      = flag.Bool("use-fyne", false, "Force use of Fyne GUI (default: native window on macOS)")
-	verbose      = flag.Bool("verbose", false, "Enable verbose logging")
-	showVersion  = flag.Bool("version", false, "Show version information")
-	saveConfig   = flag.Bool("save", false, "Save current settings to config file")
+	useFyne          = flag.Bool("use-fyne", false, "Force use of Fyne GUI (default: native window on macOS)")
+	verbose          = flag.Bool("verbose", false, "Enable verbose logging")
+	logFlushInterval = flag.Int("log-flush-interval", 0, "How often to flush logs to API in seconds (default: 1800/30min, set 60 for dev)")
+	showVersion      = flag.Bool("version", false, "Show version information")
+	saveConfig       = flag.Bool("save", false, "Save current settings to config file")
 )
 
 // DisplayWindow interface for both Fyne and native windows
@@ -58,6 +60,7 @@ type App struct {
 	config     *config.Config
 	client     *api.Client
 	window     DisplayWindow
+	logger     *logging.Logger
 	stopCh     chan struct{}
 	doneCh     chan struct{}
 	verbose    bool
@@ -182,6 +185,9 @@ func runGUIApp() {
 	if *verbose {
 		cfg.Verbose = true
 	}
+	if *logFlushInterval > 0 {
+		cfg.LogFlushInterval = *logFlushInterval
+	}
 
 	// Save config if requested
 	if *saveConfig {
@@ -221,11 +227,37 @@ func runGUIApp() {
 	app := &App{
 		config:     cfg,
 		client:     api.NewClient(cfg, cfg.Verbose),
+		logger:     logging.NewLogger(cfg.BaseURL, cfg.APIKey, cfg.Verbose),
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 		verbose:    cfg.Verbose,
 		needsSetup: needsSetup,
 	}
+
+	// Log startup
+	mac, _ := metrics.GetMACAddress()
+	m := metrics.Collect()
+
+	if app.verbose {
+		if cfg.APIKey != "" {
+			fmt.Println("[Logger] API logging enabled - logs will be sent to server")
+			fmt.Printf("[Logger] Flush interval: %d seconds (%v)\n", cfg.LogFlushInterval, time.Duration(cfg.LogFlushInterval)*time.Second)
+		} else {
+			fmt.Println("[Logger] API logging disabled (no API key)")
+		}
+	}
+
+	app.logger.Info("Application started", map[string]any{
+		"version":    Version,
+		"platform":   runtime.GOOS,
+		"arch":       runtime.GOARCH,
+		"device_id":  cfg.DeviceID,
+		"model":      cfg.Model,
+		"resolution": fmt.Sprintf("%dx%d", cfg.WindowWidth, cfg.WindowHeight),
+		"mac":        mac,
+		"battery":    m.BatteryVoltage,
+		"wifi_rssi":  m.RSSI,
+	})
 
 	// Print startup info
 	if app.verbose {
@@ -241,7 +273,6 @@ func runGUIApp() {
 		}
 
 		// Show MAC address info
-		mac, _ := metrics.GetMACAddress()
 		ifaceName := metrics.GetPrimaryInterfaceName()
 		if mac != "" {
 			fmt.Printf("Network: %s (%s)\n", ifaceName, mac)
@@ -250,7 +281,6 @@ func runGUIApp() {
 		fmt.Printf("Window: %dx%d\n", cfg.WindowWidth, cfg.WindowHeight)
 		fmt.Printf("Dark Mode: %v\n", cfg.DarkMode)
 		fmt.Printf("Mirror Mode: %v\n", cfg.MirrorMode)
-		m := metrics.Collect()
 		batteryV := api.PercentageToVoltage(m.BatteryVoltage)
 		fmt.Printf("System: Battery %.1f%% (%.2fV), WiFi %d dBm\n", m.BatteryVoltage, batteryV, m.RSSI)
 		fmt.Println("=====================================")
@@ -318,7 +348,12 @@ func (a *App) refreshLoop() {
 		setupResp, err := a.client.FetchSetup(a.config.DeviceID)
 		if err != nil {
 			log.Printf("Setup failed: %v", err)
-			a.showErrorScreen("Registration Failed", fmt.Sprintf("Error: %v", a.config.DeviceID, err))
+			a.logger.Error("Device setup failed", map[string]any{
+				"error":     err.Error(),
+				"device_id": a.config.DeviceID,
+			})
+			a.logger.FlushOnError()
+			a.showErrorScreen("Registration Failed", fmt.Sprintf("Device: %s\nError: %v", a.config.DeviceID, err))
 			a.window.UpdateStatus("Registration failed - see display for details")
 
 			// Keep window open with error displayed
@@ -337,6 +372,9 @@ func (a *App) refreshLoop() {
 		// Save the updated config
 		if err := a.config.Save(); err != nil {
 			log.Printf("Warning: Could not save config: %v", err)
+			a.logger.Warn("Failed to save config after setup", map[string]any{
+				"error": err.Error(),
+			})
 		}
 
 		// Update client with new API key
@@ -345,6 +383,11 @@ func (a *App) refreshLoop() {
 		if a.verbose {
 			fmt.Printf("[App] Setup successful! Device registered as: %s\n", a.config.FriendlyID)
 		}
+
+		a.logger.Info("Device setup successful", map[string]any{
+			"friendly_id": a.config.FriendlyID,
+			"device_id":   a.config.DeviceID,
+		})
 
 		a.window.UpdateStatus(fmt.Sprintf("Registered as %s", a.config.FriendlyID))
 		time.Sleep(2 * time.Second) // Show success message briefly
@@ -359,17 +402,38 @@ func (a *App) refreshLoop() {
 	ticker := time.NewTicker(time.Duration(refreshRate) * time.Second)
 	defer ticker.Stop()
 
+	// Periodic log flush ticker (configurable, default 30 minutes)
+	flushInterval := time.Duration(a.config.LogFlushInterval) * time.Second
+	if a.verbose {
+		fmt.Printf("[App] Log flush interval: %v\n", flushInterval)
+	}
+	logFlushTicker := time.NewTicker(flushInterval)
+	defer logFlushTicker.Stop()
+
 	for {
 		select {
 		case <-a.stopCh:
 			if a.verbose {
 				fmt.Println("[App] Refresh loop stopped")
 			}
+			// Flush any remaining logs before shutdown
+			a.logger.Info("Application shutting down", map[string]any{
+				"reason": "user_initiated",
+			})
+			if err := a.logger.Flush(); err != nil && a.verbose {
+				fmt.Printf("[App] Failed to flush logs on shutdown: %v\n", err)
+			}
 			return
 
 		case <-ticker.C:
 			refreshRate = a.fetchAndDisplay()
 			ticker.Reset(time.Duration(refreshRate) * time.Second)
+
+		case <-logFlushTicker.C:
+			// Periodically flush logs to API (successful operations)
+			if err := a.logger.Flush(); err != nil && a.verbose {
+				fmt.Printf("[App] Failed to flush logs: %v\n", err)
+			}
 		}
 	}
 }
@@ -460,6 +524,11 @@ func (a *App) fetchAndDisplay() int {
 
 	if err != nil {
 		log.Printf("Failed to fetch display: %v", err)
+		a.logger.Error("Failed to fetch display", map[string]any{
+			"error":       err.Error(),
+			"mirror_mode": a.config.MirrorMode,
+		})
+		a.logger.FlushOnError() // Send logs on error
 		a.window.UpdateStatus(fmt.Sprintf("Error: %v", err))
 		a.showErrorScreen("Connection Error", fmt.Sprintf("Failed to connect to server: %v", err))
 		return 60 // Retry in 60 seconds
@@ -468,6 +537,11 @@ func (a *App) fetchAndDisplay() int {
 	// Check for error response
 	if termResp.Error != "" {
 		log.Printf("API returned error: %s", termResp.Error)
+		a.logger.Error("API error response", map[string]any{
+			"error":  termResp.Error,
+			"status": termResp.Status,
+		})
+		a.logger.FlushOnError() // Send logs on error
 		a.window.UpdateStatus(fmt.Sprintf("API Error: %s", termResp.Error))
 		a.showErrorScreen("API Error", termResp.Error)
 		return 60 // Retry in 60 seconds
@@ -477,6 +551,11 @@ func (a *App) fetchAndDisplay() int {
 	imageData, err := a.client.FetchImage(termResp.ImageURL)
 	if err != nil {
 		log.Printf("Failed to fetch image: %v", err)
+		a.logger.Error("Failed to download image", map[string]any{
+			"error":     err.Error(),
+			"image_url": termResp.ImageURL,
+		})
+		a.logger.FlushOnError() // Send logs on error
 		a.window.UpdateStatus(fmt.Sprintf("Error downloading image: %v", err))
 		a.showErrorScreen("Download Error", fmt.Sprintf("Could not download image: %v", err))
 		return termResp.RefreshRate
@@ -485,6 +564,10 @@ func (a *App) fetchAndDisplay() int {
 	// Update display
 	if err := a.window.UpdateImage(imageData); err != nil {
 		log.Printf("Failed to update display: %v", err)
+		a.logger.Error("Failed to render image", map[string]any{
+			"error": err.Error(),
+		})
+		a.logger.FlushOnError() // Send logs on error
 		a.window.UpdateStatus(fmt.Sprintf("Error displaying image: %v", err))
 		a.showErrorScreen("Display Error", fmt.Sprintf("Could not render image: %v", err))
 		return termResp.RefreshRate
@@ -505,6 +588,14 @@ func (a *App) fetchAndDisplay() int {
 	if a.verbose {
 		fmt.Printf("[App] Display updated. Next refresh in %d seconds\n", termResp.RefreshRate)
 	}
+
+	// Log successful update (will be buffered and sent periodically or on error)
+	a.logger.Info("Display updated successfully", map[string]any{
+		"filename":     termResp.Filename,
+		"refresh_rate": termResp.RefreshRate,
+		"mirror_mode":  a.config.MirrorMode,
+		"status":       termResp.Status,
+	})
 
 	return termResp.RefreshRate
 }

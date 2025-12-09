@@ -48,22 +48,28 @@ type Config struct {
 
 	// Verbose enables detailed logging
 	Verbose bool `json:"verbose,omitempty"`
+
+	// LogFlushInterval sets how often logs are flushed to API (in seconds)
+	// Default: 1800 (30 minutes). Set to lower value for development (e.g., 60)
+	LogFlushInterval int `json:"log_flush_interval,omitempty"`
 }
 
 const (
-	DefaultBaseURL      = "https://trmnl.app"
-	DefaultWindowWidth  = 800
-	DefaultWindowHeight = 480
-	ConfigFileName      = "config.json"
+	DefaultBaseURL         = "https://trmnl.app"
+	DefaultWindowWidth     = 800
+	DefaultWindowHeight    = 480
+	DefaultLogFlushInterval = 1800 // 30 minutes
+	ConfigFileName         = "config.json"
 )
 
 // Load reads configuration from file and environment variables
 // Priority: CLI flags > Environment variables > Config file > Defaults
 func Load() (*Config, error) {
 	cfg := &Config{
-		BaseURL:      DefaultBaseURL,
-		WindowWidth:  DefaultWindowWidth,
-		WindowHeight: DefaultWindowHeight,
+		BaseURL:          DefaultBaseURL,
+		WindowWidth:      DefaultWindowWidth,
+		WindowHeight:     DefaultWindowHeight,
+		LogFlushInterval: DefaultLogFlushInterval,
 	}
 
 	// Get config directory path
