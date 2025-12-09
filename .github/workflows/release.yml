@@ -16,14 +16,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'  # Adjust to your Go version
+      
+      - name: Add Go bin to PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+      
+      - name: Verify fyne-cross installation
+        run: |
+          which fyne-cross
+          fyne-cross version
       
       - name: Make build script executable
         run: chmod +x build-all.sh
       
       - name: Run build script
         run: ./build-all.sh
+      
+      - name: List built artifacts
+        run: |
+          echo "Contents of fyne-cross directory:"
+          find fyne-cross -type f 2>/dev/null || echo "No fyne-cross directory found"
+          echo "Searching for common build outputs:"
+          find . -name "*.exe" -o -name "*.tar.gz" -o -name "*.app" 2>/dev/null || echo "No artifacts found"
       
       - name: Upload artifacts to workflow
         uses: actions/upload-artifact@v4
@@ -37,7 +60,7 @@ jobs:
       - name: Upload binaries to release
         run: |
           # Find all built artifacts
-          find fyne-cross/dist fyne-cross/bin -type f \( -name "*.exe" -o -name "*.app" -o -name "*.tar.gz" -o -name "*.zip" -o -perm -111 \) 2>/dev/null | while read file; do
+          find fyne-cross/dist fyne-cross/bin -type f \( -name "*.exe" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.app*" \) 2>/dev/null | while read file; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
               gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
