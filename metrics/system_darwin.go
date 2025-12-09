@@ -2,13 +2,81 @@
 
 package metrics
 
+/*
+#cgo CFLAGS: -x objective-c
+#cgo LDFLAGS: -framework CoreWLAN -framework Foundation -framework IOKit
+#import <CoreWLAN/CoreWLAN.h>
+#import <IOKit/ps/IOPowerSources.h>
+#import <IOKit/ps/IOPSKeys.h>
+
+int getWiFiRSSI() {
+	@autoreleasepool {
+		CWWiFiClient *client = [CWWiFiClient sharedWiFiClient];
+		if (!client) {
+			return 0;
+		}
+
+		CWInterface *interface = [client interface];
+		if (!interface) {
+			return 0;
+		}
+
+		NSInteger rssi = [interface rssiValue];
+		return (int)rssi;
+	}
+}
+
+double getBatteryLevel() {
+	@autoreleasepool {
+		CFTypeRef powerSourcesInfo = IOPSCopyPowerSourcesInfo();
+		if (!powerSourcesInfo) {
+			return -1.0;
+		}
+
+		CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerSourcesInfo);
+		if (!powerSources) {
+			CFRelease(powerSourcesInfo);
+			return -1.0;
+		}
+
+		double batteryLevel = -1.0;
+		CFIndex count = CFArrayGetCount(powerSources);
+
+		for (CFIndex i = 0; i < count; i++) {
+			CFTypeRef powerSource = CFArrayGetValueAtIndex(powerSources, i);
+			CFDictionaryRef description = IOPSGetPowerSourceDescription(powerSourcesInfo, powerSource);
+
+			if (description) {
+				// Check if this is a battery (not an external power source)
+				CFStringRef transportType = CFDictionaryGetValue(description, CFSTR(kIOPSTransportTypeKey));
+				if (transportType && CFStringCompare(transportType, CFSTR(kIOPSInternalType), 0) == kCFCompareEqualTo) {
+					// Get current capacity
+					CFNumberRef currentCapacity = CFDictionaryGetValue(description, CFSTR(kIOPSCurrentCapacityKey));
+					CFNumberRef maxCapacity = CFDictionaryGetValue(description, CFSTR(kIOPSMaxCapacityKey));
+
+					if (currentCapacity && maxCapacity) {
+						int current = 0, max = 0;
+						CFNumberGetValue(currentCapacity, kCFNumberIntType, &current);
+						CFNumberGetValue(maxCapacity, kCFNumberIntType, &max);
+
+						if (max > 0) {
+							batteryLevel = (double)current / (double)max * 100.0;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		CFRelease(powerSources);
+		CFRelease(powerSourcesInfo);
+		return batteryLevel;
+	}
+}
+*/
+import "C"
 import (
-	"context"
 	"net"
-	"os/exec"
-	"strconv"
-	"strings"
-	"time"
 
 	"golang.org/x/net/route"
 )
@@ -105,60 +173,12 @@ func isDefaultRoute(rm *route.RouteMessage) bool {
 	return false
 }
 
-// getWiFiSignal returns WiFi signal strength (RSSI in dBm)
+// getWiFiSignal returns WiFi signal strength (RSSI in dBm) using CoreWLAN framework
 func getWiFiSignal() int {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I")
-	output, err := cmd.Output()
-	if err != nil {
-		return 0
-	}
-
-	// Parse output for "agrCtlRSSI: -50"
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "agrCtlRSSI:") {
-			parts := strings.Split(line, ":")
-			if len(parts) == 2 {
-				rssiStr := strings.TrimSpace(parts[1])
-				if rssi, err := strconv.Atoi(rssiStr); err == nil {
-					return rssi
-				}
-			}
-		}
-	}
-
-	return 0
+	return int(C.getWiFiRSSI())
 }
 
-// getBatteryPercentage returns battery percentage (0-100) or -1 if unavailable
+// getBatteryPercentage returns battery percentage (0-100) or -1 if unavailable using IOKit framework
 func getBatteryPercentage() float64 {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "pmset", "-g", "batt")
-	output, err := cmd.Output()
-	if err != nil {
-		return -1
-	}
-
-	// Parse output like: "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=123456789)	95%; discharging; 5:23 remaining"
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "InternalBattery") {
-			// Extract percentage
-			parts := strings.Split(line, "\t")
-			if len(parts) > 1 {
-				percentStr := strings.TrimSpace(strings.Split(parts[1], ";")[0])
-				percentStr = strings.TrimSuffix(percentStr, "%")
-				if percent, err := strconv.ParseFloat(percentStr, 64); err == nil {
-					return percent
-				}
-			}
-		}
-	}
-
-	return -1
+	return float64(C.getBatteryLevel())
 }
