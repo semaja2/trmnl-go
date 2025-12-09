@@ -1,16 +1,16 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
-
-	"crypto/rand"
 
 	"github.com/semaja2/trmnl-go/api"
 	"github.com/semaja2/trmnl-go/config"
@@ -26,6 +26,7 @@ var (
 	// Command-line flags
 	apiKey       = flag.String("api-key", "", "TRMNL API key (for usetrmnl.com)")
 	deviceID     = flag.String("device-id", "", "Device ID (for self-hosted servers)")
+	macAddress   = flag.String("mac-address", "", "MAC address to use as Device ID (e.g. AA:BB:CC:DD:EE:FF)")
 	netInterface = flag.String("interface", "", "Network interface for MAC address (e.g. en0, eth0)")
 	baseURL      = flag.String("base-url", "", "Base URL for TRMNL API")
 	model        = flag.String("model", "", "Device model (e.g., TRMNL, virtual-hd, virtual-fhd)")
@@ -53,12 +54,13 @@ type DisplayWindow interface {
 }
 
 type App struct {
-	config  *config.Config
-	client  *api.Client
-	window  DisplayWindow
-	stopCh  chan struct{}
-	doneCh  chan struct{}
-	verbose bool
+	config     *config.Config
+	client     *api.Client
+	window     DisplayWindow
+	stopCh     chan struct{}
+	doneCh     chan struct{}
+	verbose    bool
+	needsSetup bool
 }
 
 func isRunningOnMacOS() bool {
@@ -110,6 +112,20 @@ func runGUIApp() {
 	}
 	if *deviceID != "" {
 		cfg.DeviceID = *deviceID
+	}
+	if *macAddress != "" {
+		// MAC address flag overrides saved device ID and clears API key
+		// This allows testing with the same MAC across platforms
+		mac := strings.ToUpper(strings.TrimSpace(*macAddress))
+		if len(mac) == 17 && (strings.Count(mac, ":") == 5 || strings.Count(mac, "-") == 5) {
+			cfg.DeviceID = mac
+			cfg.APIKey = "" // Clear API key to force re-registration
+			if *verbose {
+				log.Printf("Using manually specified MAC address: %s (API key cleared for re-registration)", cfg.DeviceID)
+			}
+		} else {
+			log.Fatalf("Invalid MAC address format: %s (expected format: AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF)", *macAddress)
+		}
 	}
 	if *baseURL != "" {
 		cfg.BaseURL = *baseURL
@@ -186,64 +202,17 @@ func runGUIApp() {
 		}
 	}
 
-	// Auto-setup if no credentials are configured
-	needsSetup := cfg.APIKey == "" && *setup == false
-	if needsSetup {
-		fmt.Println("No API key found. Running automatic setup...")
-		*setup = true
-	}
-
-	// Handle setup mode - retrieve API key via MAC address
-	if *setup {
-		if cfg.DeviceID == "" {
-			log.Fatal("Cannot run setup: Device ID (MAC address) is required")
-		}
-
-		client := api.NewClient(cfg, cfg.Verbose)
-		fmt.Printf("Running setup for device: %s\n", cfg.DeviceID)
-		fmt.Printf("Contacting server: %s\n", cfg.BaseURL)
-
-		setupResp, err := client.FetchSetup(cfg.DeviceID)
-		if err != nil {
-			log.Fatalf("Setup failed: %v\n\nIf you're using a self-hosted server, use:\n  ./trmnl-go -api-key YOUR_KEY\nor:\n  ./trmnl-go -device-id YOUR_DEVICE_ID -base-url https://your-server.com", err)
-		}
-
-		cfg.APIKey = setupResp.APIKey
-		cfg.FriendlyID = setupResp.FriendlyID
-
-		fmt.Printf("\n✓ Setup successful!\n")
-		fmt.Printf("API Key: %s\n", cfg.APIKey)
-		if cfg.FriendlyID != "" {
-			fmt.Printf("Friendly ID: %s\n", cfg.FriendlyID)
-		}
-
-		// Save configuration
-		if err := cfg.Save(); err != nil {
-			log.Fatalf("Failed to save configuration: %v", err)
-		}
-		fmt.Println("\nConfiguration saved successfully!")
-
-		// If this was automatic setup, continue running instead of exiting
-		if needsSetup {
-			fmt.Println("Starting application...")
-		} else {
-			fmt.Println("You can now run the application without the -setup flag.")
-			os.Exit(0)
-		}
-	}
-
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Invalid configuration: %v", err)
-	}
+	// Check if setup is needed (will be handled after GUI starts)
+	needsSetup := cfg.APIKey == "" || *setup
 
 	// Create application
 	app := &App{
-		config:  cfg,
-		client:  api.NewClient(cfg, cfg.Verbose),
-		stopCh:  make(chan struct{}),
-		doneCh:  make(chan struct{}),
-		verbose: cfg.Verbose,
+		config:     cfg,
+		client:     api.NewClient(cfg, cfg.Verbose),
+		stopCh:     make(chan struct{}),
+		doneCh:     make(chan struct{}),
+		verbose:    cfg.Verbose,
+		needsSetup: needsSetup,
 	}
 
 	// Print startup info
@@ -337,6 +306,50 @@ func (a *App) refreshLoop() {
 
 	// Keep startup screen visible for a moment
 	time.Sleep(2 * time.Second)
+
+	// Handle setup if needed
+	if a.needsSetup {
+		a.window.UpdateStatus("Registering device...")
+		if a.verbose {
+			fmt.Println("[App] Running device setup/registration...")
+		}
+
+		setupResp, err := a.client.FetchSetup(a.config.DeviceID)
+		if err != nil {
+			log.Printf("Setup failed: %v", err)
+			a.showErrorScreen("Registration Failed",
+				fmt.Sprintf("Could not register device with MAC %s.\n\nError: %v\n\nPlease check your network connection and try again.",
+					a.config.DeviceID, err))
+			a.window.UpdateStatus("Registration failed - see display for details")
+
+			// Keep window open with error displayed
+			// Wait for user to close window or signal
+			<-a.stopCh
+			if a.verbose {
+				fmt.Println("[App] Shutdown after setup failure")
+			}
+			return
+		}
+
+		// Setup successful - update config
+		a.config.APIKey = setupResp.APIKey
+		a.config.FriendlyID = setupResp.FriendlyID
+
+		// Save the updated config
+		if err := a.config.Save(); err != nil {
+			log.Printf("Warning: Could not save config: %v", err)
+		}
+
+		// Update client with new API key
+		a.client = api.NewClient(a.config, a.verbose)
+
+		if a.verbose {
+			fmt.Printf("[App] Setup successful! Device registered as: %s\n", a.config.FriendlyID)
+		}
+
+		a.window.UpdateStatus(fmt.Sprintf("Registered as %s", a.config.FriendlyID))
+		time.Sleep(2 * time.Second) // Show success message briefly
+	}
 
 	// Initial status
 	a.window.UpdateStatus("Connecting to TRMNL API...")
