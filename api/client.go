@@ -17,7 +17,7 @@ const (
 	CurrentScreenEndpoint = "/api/current_screen"
 	ModelsEndpoint        = "/api/models"
 	UserAgent             = "trmnl-go-virtual/1.0.0"
-	FirmwareVersion       = "1.0.0"
+	FirmwareVersion       = "1.6.0"
 	DefaultTimeout        = 30 * time.Second
 	DefaultDeviceModel    = "virtual"
 	MinBatteryVoltage     = 3.0
