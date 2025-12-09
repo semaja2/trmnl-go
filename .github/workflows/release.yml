@@ -1,0 +1,47 @@
+name: Build Release
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Make build script executable
+        run: chmod +x build-all.sh
+      
+      - name: Run build script
+        run: ./build-all.sh
+      
+      - name: Upload artifacts to workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-builds
+          path: |
+            fyne-cross/dist/
+            fyne-cross/bin/
+          retention-days: 5
+      
+      - name: Upload binaries to release
+        run: |
+          # Find all built artifacts
+          find fyne-cross/dist fyne-cross/bin -type f \( -name "*.exe" -o -name "*.app" -o -name "*.tar.gz" -o -name "*.zip" -o -perm -111 \) 2>/dev/null | while read file; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file..."
+              gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
