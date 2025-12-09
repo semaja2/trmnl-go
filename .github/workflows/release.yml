@@ -115,19 +115,13 @@ jobs:
       - name: Install Fyne CLI
         run: go install fyne.io/fyne/v2/cmd/fyne@latest
       
-      - name: Build macOS app for AMD64 (Intel)
-        run: |
-          fyne package -os darwin -arch amd64 -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
-          mv TRMNL.app TRMNL-amd64.app
-      
       - name: Build macOS app for ARM64 (Apple Silicon)
         run: |
-          fyne package -os darwin -arch arm64 -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
+          fyne package -os darwin  -icon Icon.png -appID net.semaja2.trmnl -appVersion 1.0.0 -name TRMNL
           mv TRMNL.app TRMNL-arm64.app
       
       - name: Package .app bundles into tar.gz
         run: |
-          tar -czf TRMNL-darwin-amd64.tar.gz TRMNL-amd64.app
           tar -czf TRMNL-darwin-arm64.tar.gz TRMNL-arm64.app
           
           echo "Created archives:"
@@ -136,7 +130,6 @@ jobs:
       - name: Upload macOS apps to release
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
-            TRMNL-darwin-amd64.tar.gz \
             TRMNL-darwin-arm64.tar.gz \
             --clobber
         env:
