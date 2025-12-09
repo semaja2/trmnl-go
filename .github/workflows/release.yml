@@ -36,14 +36,57 @@ jobs:
           fyne-cross linux --arch=amd64,arm64 --app-version=1.0.0 --app-id=net.semaja2.trmnl
           fyne-cross windows --arch=amd64,arm64 --app-version=1.0.0 --app-id=net.semaja2.trmnl
       
-      - name: Upload binaries to release
+      - name: Rename artifacts to include architecture
         run: |
-          find fyne-cross/dist -type f \( -name "*.exe" -o -name "*.tar.xz" -o -name "*.zip" \) 2>/dev/null | while read file; do
-            if [ -f "$file" ]; then
-              echo "Uploading $file..."
-              gh release upload "${{ github.event.release.tag_name }}" "$file" --clobber
+          # Process each platform directory
+          for dir in fyne-cross/dist/*/; do
+            if [ -d "$dir" ]; then
+              platform=$(basename "$dir")
+              echo "Processing $platform..."
+              
+              # Find all archives and executables in this directory
+              find "$dir" -maxdepth 1 -type f \( -name "*.tar.xz" -o -name "*.zip" -o -name "*.exe" \) | while read file; do
+                filename=$(basename "$file")
+                extension="${filename##*.}"
+                basename="${filename%.*}"
+                
+                # Create new filename with platform/arch
+                new_filename="${basename}-${platform}.${extension}"
+                
+                # Copy to a staging directory with new name
+                mkdir -p fyne-cross/release-artifacts
+                cp "$file" "fyne-cross/release-artifacts/${new_filename}"
+                echo "  Renamed: $filename -> $new_filename"
+              done
             fi
           done
+          
+          echo ""
+          echo "Final artifacts for release:"
+          ls -lh fyne-cross/release-artifacts/
+      
+      - name: Upload artifacts to workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-builds-linux-windows
+          path: fyne-cross/release-artifacts/
+          retention-days: 5
+      
+      - name: Upload binaries to release
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          
+          if [ ! -d "fyne-cross/release-artifacts" ] || [ -z "$(ls -A fyne-cross/release-artifacts)" ]; then
+            echo "Error: No artifacts found to upload!"
+            exit 1
+          fi
+          
+          find fyne-cross/release-artifacts -type f | while read file; do
+            echo "Uploading $(basename "$file")..."
+            gh release upload "$TAG" "$file" --clobber
+          done
+          
+          echo "✓ All artifacts uploaded successfully"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
