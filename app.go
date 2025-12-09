@@ -19,7 +19,7 @@ import (
 	"github.com/semaja2/trmnl-go/render"
 )
 
-const Version = "1.0.0"
+const Version = "1.6.0"
 
 var (
 	// Command-line flags
@@ -34,6 +34,8 @@ var (
 	height       = flag.Int("height", 0, "Window height (overrides model default)")
 	darkMode     = flag.Bool("dark", false, "Enable dark mode (invert colors)")
 	alwaysOnTop  = flag.Bool("always-on-top", false, "Keep window always on top (macOS only)")
+	fullscreen   = flag.Bool("fullscreen", false, "Enable fullscreen mode")
+	rotation     = flag.Int("rotation", 0, "Rotate image (degrees: 0, 90, 180, 270, or -90)")
 	mirrorMode   = flag.Bool("mirror", false, "Use mirror mode (show current screen, not device-specific)")
 	setup        = flag.Bool("setup", false, "Run setup to retrieve API key via MAC address")
 	useFyne      = flag.Bool("use-fyne", false, "Force use of Fyne GUI (default: native window on macOS)")
@@ -162,6 +164,17 @@ func runGUIApp() {
 	}
 	if *alwaysOnTop {
 		cfg.AlwaysOnTop = true
+	}
+	if *fullscreen {
+		cfg.Fullscreen = true
+	}
+	if *rotation != 0 {
+		// Normalize -90 to 270
+		if *rotation == -90 {
+			cfg.Rotation = 270
+		} else {
+			cfg.Rotation = *rotation
+		}
 	}
 	if *mirrorMode {
 		cfg.MirrorMode = true

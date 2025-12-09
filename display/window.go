@@ -38,8 +38,14 @@ func NewWindow(cfg *config.Config, verbose bool) *Window {
 	}
 
 	w.window = w.app.NewWindow("TRMNL Virtual Display")
-	w.window.Resize(fyne.NewSize(float32(cfg.WindowWidth), float32(cfg.WindowHeight)))
-	w.window.SetFixedSize(true)
+
+	// Set fullscreen or windowed mode
+	if cfg.Fullscreen {
+		w.window.SetFullScreen(true)
+	} else {
+		w.window.Resize(fyne.NewSize(float32(cfg.WindowWidth), float32(cfg.WindowHeight)))
+		w.window.SetFixedSize(true)
+	}
 
 	// Set as master window for proper app behavior (shows dock icon on macOS)
 	w.window.SetMaster()
@@ -84,6 +90,14 @@ func (w *Window) UpdateImage(imageData []byte) error {
 	img, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
 		return fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Apply rotation if enabled
+	if w.config.Rotation != 0 {
+		img = rotateImage(img, w.config.Rotation)
+		if w.verbose {
+			fmt.Printf("[Display] Applied rotation: %d degrees\n", w.config.Rotation)
+		}
 	}
 
 	// Apply dark mode if enabled
@@ -133,31 +147,6 @@ func (w *Window) Close() {
 // GetApp returns the Fyne app instance
 func (w *Window) GetApp() interface{} {
 	return w.app
-}
-
-// invertImage inverts the colors of an image for dark mode
-func invertImage(img image.Image) image.Image {
-	bounds := img.Bounds()
-	inverted := image.NewRGBA(bounds)
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			originalColor := img.At(x, y)
-			r, g, b, a := originalColor.RGBA()
-
-			// Invert RGB channels (keep alpha)
-			invertedColor := color.RGBA{
-				R: uint8(255 - (r >> 8)),
-				G: uint8(255 - (g >> 8)),
-				B: uint8(255 - (b >> 8)),
-				A: uint8(a >> 8),
-			}
-
-			inverted.Set(x, y, invertedColor)
-		}
-	}
-
-	return inverted
 }
 
 // CreatePlaceholderImage creates a placeholder image with text

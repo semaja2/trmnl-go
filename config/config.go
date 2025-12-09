@@ -37,6 +37,12 @@ type Config struct {
 	// AlwaysOnTop keeps the window above all others
 	AlwaysOnTop bool `json:"always_on_top,omitempty"`
 
+	// Fullscreen enables fullscreen mode
+	Fullscreen bool `json:"fullscreen,omitempty"`
+
+	// Rotation rotates the image (in degrees: 0, 90, 180, 270)
+	Rotation int `json:"rotation,omitempty"`
+
 	// MirrorMode uses /api/current_screen instead of device-specific display
 	MirrorMode bool `json:"mirror_mode,omitempty"`
 

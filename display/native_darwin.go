@@ -24,11 +24,12 @@ static NSImageView* imageView = nil;
 
 static WindowDelegate* windowDelegate = nil;
 
-void* createFloatingWindow(int width, int height, bool alwaysOnTop) {
+void* createFloatingWindow(int width, int height, bool alwaysOnTop, bool fullscreen) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
                                       NSWindowStyleMaskClosable |
-                                      NSWindowStyleMaskMiniaturizable;
+                                      NSWindowStyleMaskMiniaturizable |
+                                      NSWindowStyleMaskResizable;
 
         NSRect frame = NSMakeRect(100, 100, width, height);
         mainWindow = [[NSWindow alloc] initWithContentRect:frame
@@ -43,10 +44,13 @@ void* createFloatingWindow(int width, int height, bool alwaysOnTop) {
         windowDelegate = [[WindowDelegate alloc] init];
         [mainWindow setDelegate:windowDelegate];
 
+        // Always enable fullscreen support
+        [mainWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
+
         if (alwaysOnTop) {
             [mainWindow setLevel:NSFloatingWindowLevel];
-            [mainWindow setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                               NSWindowCollectionBehaviorFullScreenAuxiliary];
+            // Note: When always-on-top is enabled, fullscreen may not work as expected
+            // due to window level conflicts
         }
 
         imageView = [[NSImageView alloc] initWithFrame:frame];
@@ -56,6 +60,13 @@ void* createFloatingWindow(int width, int height, bool alwaysOnTop) {
         [mainWindow makeKeyAndOrderFront:nil];
         [mainWindow center];
         [NSApp activateIgnoringOtherApps:YES];
+
+        // Enter fullscreen if requested (with delay to ensure window is ready)
+        if (fullscreen) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [mainWindow toggleFullScreen:nil];
+            });
+        }
     });
 
     return (__bridge void*)mainWindow;
@@ -114,6 +125,10 @@ void stopNativeApp() {
 */
 import "C"
 import (
+	"bytes"
+	"fmt"
+	"image"
+	"image/png"
 	"unsafe"
 
 	"github.com/semaja2/trmnl-go/config"
@@ -138,6 +153,7 @@ func NewNativeWindow(cfg *config.Config, verbose bool) *NativeWindow {
 		C.int(cfg.WindowWidth),
 		C.int(cfg.WindowHeight),
 		C.bool(cfg.AlwaysOnTop),
+		C.bool(cfg.Fullscreen),
 	)
 
 	return w
@@ -152,6 +168,32 @@ func (w *NativeWindow) Show() {
 func (w *NativeWindow) UpdateImage(imageData []byte) error {
 	if len(imageData) == 0 {
 		return nil
+	}
+
+	// Apply rotation and/or dark mode if needed
+	if w.config.Rotation != 0 || w.config.DarkMode {
+		// Decode image
+		img, _, err := image.Decode(bytes.NewReader(imageData))
+		if err != nil {
+			return fmt.Errorf("failed to decode image: %w", err)
+		}
+
+		// Apply rotation
+		if w.config.Rotation != 0 {
+			img = rotateImage(img, w.config.Rotation)
+		}
+
+		// Apply dark mode
+		if w.config.DarkMode {
+			img = invertImage(img)
+		}
+
+		// Re-encode image to PNG
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			return fmt.Errorf("failed to encode image: %w", err)
+		}
+		imageData = buf.Bytes()
 	}
 
 	// Pass image data to Objective-C
