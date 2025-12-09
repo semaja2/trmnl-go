@@ -18,7 +18,55 @@ Virtual TRMNL device in Go that renders dashboard content to a desktop window. R
 - **Startup splash screen** and **error screen rendering**
 - Predefined device models (TRMNL, virtual, waveshare, etc.)
 
-## Installation
+## Quick Start (Pre-built Releases)
+
+**Download the latest release for your platform:**
+
+1. Go to [Releases](https://github.com/semaja2/trmnl-go/releases)
+2. Download the appropriate file for your system:
+   - **macOS (Universal)**: `TRMNL-darwin-universal.tar.gz`
+   - **Windows (x64)**: `trmnl-go-windows-amd64.exe`
+   - **Windows (ARM64)**: `trmnl-go-windows-arm64.exe`
+   - **Linux (x64)**: `trmnl-go-linux-amd64`
+   - **Linux (ARM64)**: `trmnl-go-linux-arm64`
+
+3. **Run the application:**
+
+   **macOS:**
+   ```bash
+   # Extract the .app from the zip file
+   unzip TRMNL-darwin-universal.tar.gz
+
+   # Remove Gatekeeper quarantine (required for unsigned apps)
+   xattr -cr TRMNL.app
+
+   # Double-click TRMNL-arm64.app or run from terminal:
+   open TRMNL.app
+   ```
+
+   **Windows:**
+   ```cmd
+   # Just double-click the .exe file
+   # Or run from Command Prompt:
+   trmnl-go-windows-amd64.exe
+   ```
+
+   **Linux:**
+   ```bash
+   # Make executable
+   chmod +x trmnl-go-linux-amd64
+
+   # Run
+   ./trmnl-go-linux-amd64
+   ```
+
+4. **That's it!** The app will automatically:
+   - Detect your MAC address
+   - Register with usetrmnl.com
+   - Save your API key
+   - Start displaying your dashboard
+
+## Building from Source
 
 **Prerequisites:**
 - Go 1.22+
@@ -42,22 +90,16 @@ go build -o trmnl-go
 
 **Note:** fyne-cross will be automatically installed if not present. It uses Docker containers to cross-compile for all platforms with native dependencies (CoreWLAN, WLAN API, etc.).
 
-## Quick Start
+## Usage Examples
 
 ```bash
-# First run (automatic setup - no configuration needed!)
+# First run - automatic setup (no configuration needed!)
 ./trmnl-go
-
-# That's it! The app will automatically:
-# 1. Detect your MAC address
-# 2. Register with usetrmnl.com
-# 3. Save your API key
-# 4. Start displaying
 
 # Subsequent runs just use saved config
 ./trmnl-go
 
-# Or manually trigger setup
+# Manually trigger setup/re-registration
 ./trmnl-go -setup
 
 # Using API key directly
@@ -71,27 +113,31 @@ go build -o trmnl-go
 
 # Save configuration for future runs
 ./trmnl-go -api-key YOUR_KEY -width 1024 -height 768 -save
+
+# Development mode with verbose logging and fast log uploads
+./trmnl-go --verbose --log-flush-interval 60
 ```
 
 ## Command-Line Options
 
 ```
-  -api-key string       TRMNL API key
-  -device-id string     Device ID (self-hosted)
-  -base-url string      API base URL (default: https://trmnl.app)
-  -setup                Run setup to retrieve API key via MAC address
-  -mirror               Use mirror mode (show current screen)
-  -model string         Device model (e.g., TRMNL, virtual-hd, virtual-fhd)
-  -list-models          List available device models
-  -interface string     Network interface for MAC address (e.g., en0, eth0)
-  -width int            Window width (overrides model default)
-  -height int           Window height (overrides model default)
-  -dark                 Enable dark mode
-  -always-on-top        Keep window on top (macOS only)
-  -use-fyne             Force Fyne GUI (default: native on macOS)
-  -verbose              Enable verbose logging
-  -version              Show version
-  -save                 Save settings to config
+  -api-key string           TRMNL API key
+  -device-id string         Device ID (self-hosted)
+  -base-url string          API base URL (default: https://trmnl.app)
+  -setup                    Run setup to retrieve API key via MAC address
+  -mirror                   Use mirror mode (show current screen)
+  -model string             Device model (e.g., TRMNL, virtual-hd, virtual-fhd)
+  -list-models              List available device models
+  -interface string         Network interface for MAC address (e.g., en0, eth0)
+  -width int                Window width (overrides model default)
+  -height int               Window height (overrides model default)
+  -dark                     Enable dark mode
+  -always-on-top            Keep window on top (macOS only)
+  -use-fyne                 Force Fyne GUI (default: native on macOS)
+  -verbose                  Enable verbose logging
+  -log-flush-interval int   Log flush interval in seconds (default: 1800, use 60 for dev)
+  -version                  Show version
+  -save                     Save settings to config
 ```
 
 ## Predefined Models
