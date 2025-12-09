@@ -369,10 +369,16 @@ func (a *App) showStartupScreen() {
 		fmt.Println("[App] Showing startup screen...")
 	}
 
-	// Get MAC address
-	mac, err := metrics.GetMACAddress()
-	if err != nil || mac == "" {
-		mac = "Unknown"
+	// Use configured Device ID (which may be manually specified MAC)
+	mac := a.config.DeviceID
+	if mac == "" {
+		// Fallback to detecting MAC if not configured
+		detectedMAC, err := metrics.GetMACAddress()
+		if err != nil || detectedMAC == "" {
+			mac = "Unknown"
+		} else {
+			mac = detectedMAC
+		}
 	}
 
 	// Build message
