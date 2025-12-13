@@ -16,6 +16,9 @@ Virtual TRMNL device in Go that renders dashboard content to a desktop window. R
 - **Realistic battery reporting** (Li-ion voltage curve 3.0V-4.08V)
 - **WiFi signal strength** (RSSI) reporting
 - **Startup splash screen** and **error screen rendering**
+- **Keyboard shortcuts**:
+  - Manual refresh: Cmd+R / Ctrl+R
+  - Rotate display: Cmd+T / Ctrl+T (cycles through 0° → 90° → 180° → 270°)
 - Predefined device models (TRMNL, virtual, waveshare, etc.)
 
 ## Quick Start (Pre-built Releases)

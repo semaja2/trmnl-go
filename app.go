@@ -51,20 +51,27 @@ type DisplayWindow interface {
 	Show()
 	Close()
 	SetOnClosed(func())
+	SetOnRefresh(func())
+	SetOnRotate(func())
 	UpdateImage([]byte) error
 	UpdateStatus(string)
 	GetApp() interface{}
+	SetMenuItemsEnabled(bool)
 }
 
 type App struct {
-	config     *config.Config
-	client     *api.Client
-	window     DisplayWindow
-	logger     *logging.Logger
-	stopCh     chan struct{}
-	doneCh     chan struct{}
-	verbose    bool
-	needsSetup bool
+	config         *config.Config
+	client         *api.Client
+	window         DisplayWindow
+	logger         *logging.Logger
+	stopCh         chan struct{}
+	doneCh         chan struct{}
+	refreshCh      chan struct{}
+	rotateCh       chan struct{}
+	verbose        bool
+	needsSetup     bool
+	lastImageData  []byte // Store last fetched image for rotation without refresh
+	isConnected    bool   // Track if we've successfully connected
 }
 
 func isRunningOnMacOS() bool {
@@ -230,6 +237,8 @@ func runGUIApp() {
 		logger:     logging.NewLogger(cfg.BaseURL, cfg.APIKey, cfg.Verbose),
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
+		refreshCh:  make(chan struct{}, 1), // Buffered to avoid blocking
+		rotateCh:   make(chan struct{}, 1), // Buffered to avoid blocking
 		verbose:    cfg.Verbose,
 		needsSetup: needsSetup,
 	}
@@ -300,6 +309,49 @@ func runGUIApp() {
 		}
 		close(app.stopCh)
 	})
+
+	// Handle refresh shortcut (Cmd+R / Ctrl+R)
+	app.window.SetOnRefresh(func() {
+		if !app.isConnected {
+			if app.verbose {
+				fmt.Println("[App] Refresh ignored - not yet connected")
+			}
+			app.window.UpdateStatus("Please wait - connecting...")
+			return
+		}
+		if app.verbose {
+			fmt.Println("[App] Manual refresh triggered")
+		}
+		// Non-blocking send to refresh channel
+		select {
+		case app.refreshCh <- struct{}{}:
+		default:
+			// Channel full, refresh already pending
+		}
+	})
+
+	// Handle rotate shortcut (Cmd+T / Ctrl+T)
+	app.window.SetOnRotate(func() {
+		if !app.isConnected {
+			if app.verbose {
+				fmt.Println("[App] Rotate ignored - not yet connected")
+			}
+			app.window.UpdateStatus("Please wait - connecting...")
+			return
+		}
+		if app.verbose {
+			fmt.Println("[App] Manual rotate triggered")
+		}
+		// Non-blocking send to rotate channel
+		select {
+		case app.rotateCh <- struct{}{}:
+		default:
+			// Channel full, rotate already pending
+		}
+	})
+
+	// Disable menu items until connected
+	app.window.SetMenuItemsEnabled(false)
 
 	// Start refresh goroutine
 	go app.refreshLoop()
@@ -429,6 +481,23 @@ func (a *App) refreshLoop() {
 			refreshRate = a.fetchAndDisplay()
 			ticker.Reset(time.Duration(refreshRate) * time.Second)
 
+		case <-a.refreshCh:
+			// Manual refresh triggered by keyboard shortcut
+			if a.verbose {
+				fmt.Println("[App] Executing manual refresh...")
+			}
+			refreshRate = a.fetchAndDisplay()
+			ticker.Reset(time.Duration(refreshRate) * time.Second)
+
+		case <-a.rotateCh:
+			// Manual rotate triggered by keyboard shortcut
+			if a.verbose {
+				fmt.Println("[App] Executing manual rotate...")
+			}
+			a.rotateDisplay()
+			// Re-render current image with new rotation (don't fetch new image)
+			a.reRenderCurrentImage()
+
 		case <-logFlushTicker.C:
 			// Periodically flush logs to API (successful operations)
 			if err := a.logger.Flush(); err != nil && a.verbose {
@@ -501,6 +570,56 @@ func (a *App) showErrorScreen(title, message string) {
 	}
 }
 
+// reRenderCurrentImage re-renders the last fetched image with current rotation/dark mode settings
+func (a *App) reRenderCurrentImage() {
+	if a.lastImageData == nil {
+		if a.verbose {
+			fmt.Println("[App] No image data to re-render")
+		}
+		return
+	}
+
+	if a.verbose {
+		fmt.Println("[App] Re-rendering current image with new rotation...")
+	}
+
+	// Update display with stored image data (rotation/dark mode applied in UpdateImage)
+	if err := a.window.UpdateImage(a.lastImageData); err != nil {
+		log.Printf("Failed to re-render image: %v", err)
+		a.window.UpdateStatus(fmt.Sprintf("Error re-rendering: %v", err))
+	}
+}
+
+// rotateDisplay cycles through rotation angles (0 -> 90 -> 180 -> 270 -> 0)
+func (a *App) rotateDisplay() {
+	// Cycle through rotation angles
+	switch a.config.Rotation {
+	case 0:
+		a.config.Rotation = 90
+	case 90:
+		a.config.Rotation = 180
+	case 180:
+		a.config.Rotation = 270
+	case 270:
+		a.config.Rotation = 0
+	default:
+		a.config.Rotation = 0
+	}
+
+	if a.verbose {
+		fmt.Printf("[App] Rotation set to %d degrees\n", a.config.Rotation)
+	}
+
+	// Save the rotation to config
+	if err := a.config.Save(); err != nil && a.verbose {
+		fmt.Printf("[App] Warning: Failed to save rotation to config: %v\n", err)
+	}
+
+	a.logger.Info("Display rotation changed", map[string]any{
+		"rotation": a.config.Rotation,
+	})
+}
+
 // fetchAndDisplay fetches the current display and updates the window
 // Returns the refresh rate for the next update
 func (a *App) fetchAndDisplay() int {
@@ -561,6 +680,9 @@ func (a *App) fetchAndDisplay() int {
 		return termResp.RefreshRate
 	}
 
+	// Store image data for rotation without refresh
+	a.lastImageData = imageData
+
 	// Update display
 	if err := a.window.UpdateImage(imageData); err != nil {
 		log.Printf("Failed to update display: %v", err)
@@ -571,6 +693,16 @@ func (a *App) fetchAndDisplay() int {
 		a.window.UpdateStatus(fmt.Sprintf("Error displaying image: %v", err))
 		a.showErrorScreen("Display Error", fmt.Sprintf("Could not render image: %v", err))
 		return termResp.RefreshRate
+	}
+
+	// Mark as connected after first successful display update
+	if !a.isConnected {
+		a.isConnected = true
+		// Enable menu items now that we're connected
+		a.window.SetMenuItemsEnabled(true)
+		if a.verbose {
+			fmt.Println("[App] Successfully connected - shortcuts now enabled")
+		}
 	}
 
 	// Update status

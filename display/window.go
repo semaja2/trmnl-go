@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/semaja2/trmnl-go/config"
@@ -21,12 +22,14 @@ import (
 
 // Window represents the display window
 type Window struct {
-	app         fyne.App
-	window      fyne.Window
-	imageWidget *canvas.Image
-	statusLabel *widget.Label
-	config      *config.Config
-	verbose     bool
+	app             fyne.App
+	window          fyne.Window
+	imageWidget     *canvas.Image
+	statusLabel     *widget.Label
+	config          *config.Config
+	verbose         bool
+	refreshCallback func()
+	rotateCallback  func()
 }
 
 // NewWindow creates a new display window
@@ -69,6 +72,27 @@ func NewWindow(cfg *config.Config, verbose bool) *Window {
 	)
 
 	w.window.SetContent(content)
+
+	// Set up keyboard shortcuts using Canvas shortcut handler
+	// Cmd+R / Ctrl+R for refresh
+	w.window.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyR,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierSuper,
+	}, func(shortcut fyne.Shortcut) {
+		if w.refreshCallback != nil {
+			w.refreshCallback()
+		}
+	})
+
+	// Cmd+T / Ctrl+T for rotate
+	w.window.Canvas().AddShortcut(&desktop.CustomShortcut{
+		KeyName:  fyne.KeyT,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierSuper,
+	}, func(shortcut fyne.Shortcut) {
+		if w.rotateCallback != nil {
+			w.rotateCallback()
+		}
+	})
 
 	return w
 }
@@ -137,6 +161,16 @@ func (w *Window) SetOnClosed(callback func()) {
 	w.window.SetOnClosed(callback)
 }
 
+// SetOnRefresh sets the callback for manual refresh (Cmd+R / Ctrl+R)
+func (w *Window) SetOnRefresh(callback func()) {
+	w.refreshCallback = callback
+}
+
+// SetOnRotate sets the callback for manual rotate (Cmd+T / Ctrl+T)
+func (w *Window) SetOnRotate(callback func()) {
+	w.rotateCallback = callback
+}
+
 // Close closes the window
 func (w *Window) Close() {
 	if w.window != nil {
@@ -147,6 +181,11 @@ func (w *Window) Close() {
 // GetApp returns the Fyne app instance
 func (w *Window) GetApp() interface{} {
 	return w.app
+}
+
+// SetMenuItemsEnabled is a no-op for Fyne window (shortcuts handled via callbacks)
+func (w *Window) SetMenuItemsEnabled(enabled bool) {
+	// No-op - Fyne shortcuts are already guarded in the callback
 }
 
 // CreatePlaceholderImage creates a placeholder image with text

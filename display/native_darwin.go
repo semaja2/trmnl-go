@@ -11,14 +11,30 @@ package display
 // Global window reference
 static NSWindow* mainWindow = nil;
 static NSImageView* imageView = nil;
+static volatile bool refreshRequested = false;
+static volatile bool rotateRequested = false;
 
-// Window delegate to handle close events
+// Menu item references for enabling/disabling
+static NSMenuItem* refreshMenuItem = nil;
+static NSMenuItem* rotateMenuItem = nil;
+
+// Window delegate to handle close events and menu actions
 @interface WindowDelegate : NSObject <NSWindowDelegate>
+- (void)refreshAction:(id)sender;
+- (void)rotateAction:(id)sender;
 @end
 
 @implementation WindowDelegate
 - (void)windowWillClose:(NSNotification *)notification {
     [NSApp terminate:nil];
+}
+
+- (void)refreshAction:(id)sender {
+    refreshRequested = true;
+}
+
+- (void)rotateAction:(id)sender {
+    rotateRequested = true;
 }
 @end
 
@@ -44,7 +60,12 @@ void* createFloatingWindow(int width, int height, bool alwaysOnTop, bool fullscr
         windowDelegate = [[WindowDelegate alloc] init];
         [mainWindow setDelegate:windowDelegate];
 
-        // Always enable fullscreen support
+        // Disable automatic window tabbing (removes "Show Tab Bar" menu)
+        if ([NSWindow respondsToSelector:@selector(setAllowsAutomaticWindowTabbing:)]) {
+            [NSWindow setAllowsAutomaticWindowTabbing:NO];
+        }
+
+        // Always enable fullscreen support, disable tabbing
         [mainWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
 
         if (alwaysOnTop) {
@@ -103,6 +124,39 @@ void setupMenuBar() {
     // Add app menu to main menu
     [mainMenu addItem:appMenuItem];
 
+    // View menu
+    NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+    NSMenuItem* viewMenuItem = [[NSMenuItem alloc] init];
+    [viewMenuItem setSubmenu:viewMenu];
+
+    // Refresh menu item (Cmd+R) - initially disabled
+    refreshMenuItem = [[NSMenuItem alloc] initWithTitle:@"Refresh"
+                                                 action:@selector(refreshAction:)
+                                          keyEquivalent:@"r"];
+    [refreshMenuItem setTarget:windowDelegate];
+    [refreshMenuItem setEnabled:NO]; // Disabled until connected
+    [viewMenu addItem:refreshMenuItem];
+
+    // Rotate menu item (Cmd+T) - initially disabled
+    rotateMenuItem = [[NSMenuItem alloc] initWithTitle:@"Rotate Display"
+                                                action:@selector(rotateAction:)
+                                         keyEquivalent:@"t"];
+    [rotateMenuItem setTarget:windowDelegate];
+    [rotateMenuItem setEnabled:NO]; // Disabled until connected
+    [viewMenu addItem:rotateMenuItem];
+
+    [viewMenu addItem:[NSMenuItem separatorItem]]; // Separator
+
+    // Add Enter/Exit fullscreen menu item
+    NSMenuItem* fullscreenItem = [[NSMenuItem alloc] initWithTitle:@"Toggle Full Screen"
+                                                            action:@selector(toggleFullScreen:)
+                                                     keyEquivalent:@"f"];
+    [fullscreenItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagControl];
+    [viewMenu addItem:fullscreenItem];
+
+    // Add view menu to main menu
+    [mainMenu addItem:viewMenuItem];
+
     // Set the menu bar
     [NSApp setMainMenu:mainMenu];
 }
@@ -122,6 +176,36 @@ void stopNativeApp() {
         [NSApp terminate:nil];
     });
 }
+
+// Check if refresh was requested and clear the flag
+bool checkAndClearRefreshRequested() {
+    if (refreshRequested) {
+        refreshRequested = false;
+        return true;
+    }
+    return false;
+}
+
+// Check if rotate was requested and clear the flag
+bool checkAndClearRotateRequested() {
+    if (rotateRequested) {
+        rotateRequested = false;
+        return true;
+    }
+    return false;
+}
+
+// Enable or disable the action menu items (for connection state)
+void setMenuItemsEnabled(bool enabled) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (refreshMenuItem) {
+            [refreshMenuItem setEnabled:enabled];
+        }
+        if (rotateMenuItem) {
+            [rotateMenuItem setEnabled:enabled];
+        }
+    });
+}
 */
 import "C"
 import (
@@ -129,6 +213,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"time"
 	"unsafe"
 
 	"github.com/semaja2/trmnl-go/config"
@@ -136,9 +221,11 @@ import (
 
 // NativeWindow represents a native macOS window
 type NativeWindow struct {
-	windowPtr unsafe.Pointer
-	config    *config.Config
-	verbose   bool
+	windowPtr       unsafe.Pointer
+	config          *config.Config
+	verbose         bool
+	refreshCallback func()
+	rotateCallback  func()
 }
 
 // NewNativeWindow creates a native macOS window
@@ -212,6 +299,36 @@ func (w *NativeWindow) SetOnClosed(callback func()) {
 	// TODO: Implement if needed
 }
 
+// SetOnRefresh sets the callback for manual refresh (Cmd+R)
+func (w *NativeWindow) SetOnRefresh(callback func()) {
+	w.refreshCallback = callback
+	if callback != nil {
+		// Start polling for keyboard shortcut requests from menu actions
+		go func() {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				if bool(C.checkAndClearRefreshRequested()) {
+					if w.refreshCallback != nil {
+						w.refreshCallback()
+					}
+				}
+				if bool(C.checkAndClearRotateRequested()) {
+					if w.rotateCallback != nil {
+						w.rotateCallback()
+					}
+				}
+			}
+		}()
+	}
+}
+
+// SetOnRotate sets the callback for manual rotate (Cmd+T)
+func (w *NativeWindow) SetOnRotate(callback func()) {
+	w.rotateCallback = callback
+}
+
 // Close closes the window
 func (w *NativeWindow) Close() {
 	C.stopNativeApp()
@@ -220,4 +337,16 @@ func (w *NativeWindow) Close() {
 // GetApp returns nil for native window
 func (w *NativeWindow) GetApp() interface{} {
 	return nil
+}
+
+// SetMenuItemsEnabled enables or disables the action menu items (Refresh and Rotate)
+func (w *NativeWindow) SetMenuItemsEnabled(enabled bool) {
+	C.setMenuItemsEnabled(C.bool(enabled))
+	if w.verbose {
+		if enabled {
+			fmt.Println("[Native] Menu items enabled")
+		} else {
+			fmt.Println("[Native] Menu items disabled")
+		}
+	}
 }
