@@ -11,7 +11,8 @@ Virtual TRMNL device in Go that renders dashboard content to a desktop window. R
 - API key or Device ID authentication
 - Native macOS window (borderless available via Fyne fallback)
 - Always-on-top mode (macOS only)
-- Dark mode
+- Dark mode (invert colors)
+- **E-paper mode** (4-bit grayscale, Floyd-Steinberg dithering, warm tint)
 - Auto MAC address detection
 - **Realistic battery reporting** (Li-ion voltage curve 3.0V-4.08V)
 - **WiFi signal strength** (RSSI) reporting
@@ -117,6 +118,12 @@ go build -o trmnl-go
 # Save configuration for future runs
 ./trmnl-go -api-key YOUR_KEY -width 1024 -height 768 -save
 
+# E-paper mode (simulates e-ink display appearance)
+./trmnl-go -epaper
+
+# Dark mode with e-paper effect
+./trmnl-go -dark -epaper
+
 # Development mode with verbose logging and fast log uploads
 ./trmnl-go --verbose --log-flush-interval 60
 ```
@@ -134,7 +141,10 @@ go build -o trmnl-go
   -interface string         Network interface for MAC address (e.g., en0, eth0)
   -width int                Window width (overrides model default)
   -height int               Window height (overrides model default)
-  -dark                     Enable dark mode
+  -dark                     Enable dark mode (invert colors)
+  -no-dark                  Disable dark mode (overrides saved config)
+  -epaper                   Enable e-paper mode (4-bit grayscale with dithering)
+  -no-epaper                Disable e-paper mode (overrides saved config)
   -always-on-top            Keep window on top (macOS only)
   -use-fyne                 Force Fyne GUI (default: native on macOS)
   -verbose                  Enable verbose logging
@@ -183,8 +193,10 @@ Config stored at `~/.config/trmnl/config.json`:
   "window_width": 1024,
   "window_height": 768,
   "dark_mode": false,
+  "epaper_mode": false,
   "always_on_top": false,
   "mirror_mode": false,
+  "rotation": 0,
   "verbose": false
 }
 ```
