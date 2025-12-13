@@ -163,7 +163,7 @@ func (c *Client) FetchDisplay() (*TerminalResponse, error) {
 
 	if c.verbose {
 		if authHeader == "access-token" {
-			fmt.Printf("[API] Access-Token: %s\n", authValue)
+			fmt.Printf("[API] Access-Token: %s\n", config.RedactSensitive(authValue))
 		} else {
 			fmt.Printf("[API] ID: %s\n", authValue)
 		}
@@ -281,7 +281,7 @@ func (c *Client) FetchSetup(macAddress string) (*SetupResponse, error) {
 
 	if c.verbose {
 		fmt.Printf("[API] Setup successful: APIKey=%s, FriendlyID=%s\n",
-			setupResp.APIKey, setupResp.FriendlyID)
+			config.RedactSensitive(setupResp.APIKey), setupResp.FriendlyID)
 	}
 
 	return &setupResp, nil

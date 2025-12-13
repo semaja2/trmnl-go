@@ -205,3 +205,12 @@ func (c *Config) GetAuthHeader() (string, string) {
 	}
 	return "ID", c.DeviceID
 }
+
+// RedactSensitive redacts a sensitive string, showing only the last 4 characters
+// Returns the string in format "***XXXX" for security logging
+func RedactSensitive(s string) string {
+	if len(s) <= 4 {
+		return "***" + s
+	}
+	return "***" + s[len(s)-4:]
+}

@@ -290,7 +290,7 @@ func runGUIApp() {
 		fmt.Printf("=== TRMNL Virtual Display v%s ===\n", Version)
 		fmt.Printf("Base URL: %s\n", cfg.BaseURL)
 		if cfg.APIKey != "" {
-			fmt.Printf("Auth: API Key (***%s)\n", cfg.APIKey[len(cfg.APIKey)-4:])
+			fmt.Printf("Auth: API Key (%s)\n", config.RedactSensitive(cfg.APIKey))
 		} else {
 			fmt.Printf("Auth: Device ID (%s)\n", cfg.DeviceID)
 		}
