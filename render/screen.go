@@ -13,6 +13,18 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
+// Layout constants for screen rendering
+const (
+	TitleOffsetY       = 40  // Offset from center for title text
+	MessageStartY      = 10  // Starting Y offset below center for messages
+	MessageLineSpacing = 20  // Vertical spacing between message lines
+	BottomMarginY      = 30  // Distance from bottom edge
+	MinTextMarginX     = 10  // Minimum horizontal margin for text
+	ErrorTitleOffsetY  = 60  // Offset from center for error titles
+	ErrorMessageStartY = 20  // Starting Y offset below center for error messages
+	MaxLineWrapChars   = 60  // Maximum characters per line for text wrapping
+)
+
 // GenerateStartupScreen creates a TRMNL startup/splash screen
 func GenerateStartupScreen(width, height int, message string) ([]byte, error) {
 	// Create a white background
@@ -21,19 +33,19 @@ func GenerateStartupScreen(width, height int, message string) ([]byte, error) {
 	draw.Draw(img, img.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
 
 	// Draw TRMNL logo text in center
-	drawCenteredText(img, width, height/2-40, "TRMNL", color.Black)
+	drawCenteredText(img, width, height/2-TitleOffsetY, "TRMNL", color.Black)
 
 	// Draw message below (split into lines if needed)
 	if message != "" {
 		lines := splitLines(message)
-		startY := height/2 + 10
+		startY := height/2 + MessageStartY
 		for i, line := range lines {
-			drawCenteredText(img, width, startY+(i*20), line, color.RGBA{100, 100, 100, 255})
+			drawCenteredText(img, width, startY+(i*MessageLineSpacing), line, color.RGBA{100, 100, 100, 255})
 		}
 	}
 
 	// Draw version/info at bottom
-	drawCenteredText(img, width, height-30, "Virtual Display v1.0.0", color.RGBA{150, 150, 150, 255})
+	drawCenteredText(img, width, height-BottomMarginY, "Virtual Display", color.RGBA{150, 150, 150, 255})
 
 	// Encode to PNG
 	var buf bytes.Buffer
@@ -52,50 +64,22 @@ func GenerateErrorScreen(width, height int, errorTitle, errorMessage string) ([]
 	draw.Draw(img, img.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
 
 	// Draw error icon/title
-	drawCenteredText(img, width, height/2-60, "⚠ "+errorTitle, color.RGBA{200, 0, 0, 255})
+	drawCenteredText(img, width, height/2-ErrorTitleOffsetY, "⚠ "+errorTitle, color.RGBA{200, 0, 0, 255})
 
 	// Draw error message (split into multiple lines if needed)
-	lines := wrapText(errorMessage, 60)
-	startY := height/2 - 20
+	lines := wrapText(errorMessage, MaxLineWrapChars)
+	startY := height/2 - ErrorMessageStartY
 	for i, line := range lines {
-		drawCenteredText(img, width, startY+(i*20), line, color.RGBA{80, 80, 80, 255})
+		drawCenteredText(img, width, startY+(i*MessageLineSpacing), line, color.RGBA{80, 80, 80, 255})
 	}
 
 	// Draw help text at bottom
-	drawCenteredText(img, width, height-30, "Check configuration and try again", color.RGBA{120, 120, 120, 255})
+	drawCenteredText(img, width, height-BottomMarginY, "Check configuration and try again", color.RGBA{120, 120, 120, 255})
 
 	// Encode to PNG
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return nil, fmt.Errorf("failed to encode error screen: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-// GenerateStatusScreen creates a status/info screen
-func GenerateStatusScreen(width, height int, title string, lines []string) ([]byte, error) {
-	// Create a white background
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	white := color.RGBA{255, 255, 255, 255}
-	draw.Draw(img, img.Bounds(), &image.Uniform{white}, image.Point{}, draw.Src)
-
-	// Draw title
-	drawCenteredText(img, width, 60, title, color.Black)
-
-	// Draw status lines
-	startY := 120
-	for i, line := range lines {
-		if i >= 15 { // Max 15 lines
-			break
-		}
-		drawCenteredText(img, width, startY+(i*24), line, color.RGBA{60, 60, 60, 255})
-	}
-
-	// Encode to PNG
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return nil, fmt.Errorf("failed to encode status screen: %w", err)
 	}
 
 	return buf.Bytes(), nil
@@ -112,7 +96,7 @@ func drawCenteredText(img *image.RGBA, width, y int, text string, col color.Colo
 	// Calculate starting X position for centered text
 	x := (width - textWidth) / 2
 	if x < 0 {
-		x = 10 // Minimum margin
+		x = MinTextMarginX // Minimum margin
 	}
 
 	// Draw the text

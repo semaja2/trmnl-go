@@ -1,8 +1,11 @@
 package display
 
 import (
+	"bytes"
+	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 )
 
 // rotateImage rotates an image by the specified degrees (90, 180, 270)
@@ -71,4 +74,37 @@ func invertImage(img image.Image) image.Image {
 	}
 
 	return inverted
+}
+
+// applyImageTransformations applies rotation and dark mode transformations to image data
+// Returns the transformed image data as PNG bytes
+func applyImageTransformations(imageData []byte, rotation int, darkMode bool) ([]byte, error) {
+	// If no transformations needed, return original data
+	if rotation == 0 && !darkMode {
+		return imageData, nil
+	}
+
+	// Decode image
+	img, _, err := image.Decode(bytes.NewReader(imageData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Apply rotation
+	if rotation != 0 {
+		img = rotateImage(img, rotation)
+	}
+
+	// Apply dark mode
+	if darkMode {
+		img = invertImage(img)
+	}
+
+	// Re-encode image to PNG
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, fmt.Errorf("failed to encode image: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }

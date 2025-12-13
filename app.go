@@ -20,7 +20,14 @@ import (
 	"github.com/semaja2/trmnl-go/render"
 )
 
-const Version = "1.6.0"
+const (
+	Version = "1.6.0"
+
+	// Timing constants for UI delays
+	WindowInitDelay     = 500 * time.Millisecond // Time to wait for window initialization
+	StartupScreenDelay  = 2 * time.Second         // How long to show startup screen
+	SuccessMessageDelay = 2 * time.Second         // How long to show success messages
+)
 
 var (
 	// Command-line flags
@@ -72,10 +79,6 @@ type App struct {
 	needsSetup     bool
 	lastImageData  []byte // Store last fetched image for rotation without refresh
 	isConnected    bool   // Track if we've successfully connected
-}
-
-func isRunningOnMacOS() bool {
-	return runtime.GOOS == "darwin"
 }
 
 // generateRandomMAC generates a random MAC address
@@ -382,13 +385,13 @@ func (a *App) refreshLoop() {
 	defer close(a.doneCh)
 
 	// Wait for window to be ready (NSApp needs time to initialize)
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(WindowInitDelay)
 
 	// Show startup screen
 	a.showStartupScreen()
 
 	// Keep startup screen visible for a moment
-	time.Sleep(2 * time.Second)
+	time.Sleep(StartupScreenDelay)
 
 	// Handle setup if needed
 	if a.needsSetup {
@@ -442,7 +445,7 @@ func (a *App) refreshLoop() {
 		})
 
 		a.window.UpdateStatus(fmt.Sprintf("Registered as %s", a.config.FriendlyID))
-		time.Sleep(2 * time.Second) // Show success message briefly
+		time.Sleep(SuccessMessageDelay) // Show success message briefly
 	}
 
 	// Initial status

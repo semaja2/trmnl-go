@@ -353,39 +353,3 @@ func (c *Client) FetchCurrentScreen() (*TerminalResponse, error) {
 
 	return &termResp, nil
 }
-
-// FetchModels retrieves available device models from the API
-func (c *Client) FetchModels() ([]DeviceModel, error) {
-	url := c.config.BaseURL + ModelsEndpoint
-
-	if c.verbose {
-		fmt.Printf("[API] Fetching device models from: %s\n", url)
-	}
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create models request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("models request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("models API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var modelsResp ModelsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
-		return nil, fmt.Errorf("failed to decode models response: %w", err)
-	}
-
-	if c.verbose {
-		fmt.Printf("[API] Fetched %d device models\n", len(modelsResp.Data))
-	}
-
-	return modelsResp.Data, nil
-}

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"image/color"
-	"image/draw"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -148,12 +146,10 @@ func (w *Window) UpdateImage(imageData []byte) error {
 // UpdateStatus updates the status label text
 // This is called from a goroutine, so we need to be careful about threading
 func (w *Window) UpdateStatus(status string) {
-	if w.statusLabel != nil {
-		// Use fyne.Do to ensure UI updates happen on the main thread
-		fyne.Do(func() {
-			w.statusLabel.SetText(status)
-		})
-	}
+	// Use fyne.Do to ensure UI updates happen on the main thread
+	fyne.Do(func() {
+		w.statusLabel.SetText(status)
+	})
 }
 
 // SetOnClosed sets the callback for when the window is closed
@@ -173,9 +169,7 @@ func (w *Window) SetOnRotate(callback func()) {
 
 // Close closes the window
 func (w *Window) Close() {
-	if w.window != nil {
-		w.window.Close()
-	}
+	w.window.Close()
 }
 
 // GetApp returns the Fyne app instance
@@ -186,40 +180,4 @@ func (w *Window) GetApp() interface{} {
 // SetMenuItemsEnabled is a no-op for Fyne window (shortcuts handled via callbacks)
 func (w *Window) SetMenuItemsEnabled(enabled bool) {
 	// No-op - Fyne shortcuts are already guarded in the callback
-}
-
-// CreatePlaceholderImage creates a placeholder image with text
-func CreatePlaceholderImage(width, height int, text string) image.Image {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-
-	// Fill with light gray background
-	gray := color.RGBA{R: 240, G: 240, B: 240, A: 255}
-	draw.Draw(img, img.Bounds(), &image.Uniform{gray}, image.Point{}, draw.Src)
-
-	// Draw a border
-	border := color.RGBA{R: 100, G: 100, B: 100, A: 255}
-	drawBorder(img, border, 2)
-
-	return img
-}
-
-// drawBorder draws a border around the image
-func drawBorder(img *image.RGBA, col color.Color, thickness int) {
-	bounds := img.Bounds()
-
-	// Top and bottom borders
-	for i := 0; i < thickness; i++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			img.Set(x, bounds.Min.Y+i, col)
-			img.Set(x, bounds.Max.Y-1-i, col)
-		}
-	}
-
-	// Left and right borders
-	for i := 0; i < thickness; i++ {
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			img.Set(bounds.Min.X+i, y, col)
-			img.Set(bounds.Max.X-1-i, y, col)
-		}
-	}
 }

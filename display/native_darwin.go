@@ -209,10 +209,7 @@ void setMenuItemsEnabled(bool enabled) {
 */
 import "C"
 import (
-	"bytes"
 	"fmt"
-	"image"
-	"image/png"
 	"time"
 	"unsafe"
 
@@ -257,34 +254,14 @@ func (w *NativeWindow) UpdateImage(imageData []byte) error {
 		return nil
 	}
 
-	// Apply rotation and/or dark mode if needed
-	if w.config.Rotation != 0 || w.config.DarkMode {
-		// Decode image
-		img, _, err := image.Decode(bytes.NewReader(imageData))
-		if err != nil {
-			return fmt.Errorf("failed to decode image: %w", err)
-		}
-
-		// Apply rotation
-		if w.config.Rotation != 0 {
-			img = rotateImage(img, w.config.Rotation)
-		}
-
-		// Apply dark mode
-		if w.config.DarkMode {
-			img = invertImage(img)
-		}
-
-		// Re-encode image to PNG
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
-			return fmt.Errorf("failed to encode image: %w", err)
-		}
-		imageData = buf.Bytes()
+	// Apply transformations (rotation and/or dark mode)
+	transformedData, err := applyImageTransformations(imageData, w.config.Rotation, w.config.DarkMode)
+	if err != nil {
+		return err
 	}
 
 	// Pass image data to Objective-C
-	C.updateWindowImage((*C.uchar)(unsafe.Pointer(&imageData[0])), C.int(len(imageData)))
+	C.updateWindowImage((*C.uchar)(unsafe.Pointer(&transformedData[0])), C.int(len(transformedData)))
 
 	return nil
 }
@@ -294,9 +271,13 @@ func (w *NativeWindow) UpdateStatus(status string) {
 	// No-op - native window doesn't have a status bar
 }
 
-// SetOnClosed sets a callback for window close (not implemented yet)
+// SetOnClosed sets a callback for window close
+// Note: Not needed for native macOS window since the WindowDelegate already handles
+// window close events by calling [NSApp terminate:nil], which gracefully shuts down
+// the entire application. The app.go stopCh channel-based shutdown handles cleanup.
 func (w *NativeWindow) SetOnClosed(callback func()) {
-	// TODO: Implement if needed
+	// No-op: Window close is handled by WindowDelegate calling NSApp terminate
+	// which triggers the app's signal handling and graceful shutdown sequence
 }
 
 // SetOnRefresh sets the callback for manual refresh (Cmd+R)

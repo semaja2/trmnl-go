@@ -182,16 +182,6 @@ func (l *Logger) FlushOnError() error {
 	return nil
 }
 
-// GetEntries returns a copy of current log entries (for debugging)
-func (l *Logger) GetEntries() []LogEntry {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	entries := make([]LogEntry, len(l.entries))
-	copy(entries, l.entries)
-	return entries
-}
-
 // printEntry prints a log entry to console
 func (l *Logger) printEntry(entry LogEntry) {
 	prefix := ""
