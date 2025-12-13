@@ -34,6 +34,9 @@ type Config struct {
 	// DarkMode inverts image colors
 	DarkMode bool `json:"dark_mode,omitempty"`
 
+	// EPaperMode simulates e-paper/e-ink display with 4-bit grayscale and dithering
+	EPaperMode bool `json:"epaper_mode,omitempty"`
+
 	// AlwaysOnTop keeps the window above all others
 	AlwaysOnTop bool `json:"always_on_top,omitempty"`
 
@@ -100,7 +103,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// Save writes the configuration to disk
+// Save writes the entire configuration to disk
 func (c *Config) Save() error {
 	configDir, err := getConfigDir()
 	if err != nil {
@@ -123,6 +126,41 @@ func (c *Config) Save() error {
 	}
 
 	return nil
+}
+
+// SaveRotation saves only the rotation setting to the config file
+// This preserves other settings that may have been set temporarily via flags
+func (c *Config) SaveRotation() error {
+	// Load current config from disk
+	savedConfig, err := Load()
+	if err != nil {
+		// If config doesn't exist, create a new one
+		savedConfig = c
+	}
+
+	// Update only rotation
+	savedConfig.Rotation = c.Rotation
+
+	// Save back
+	return savedConfig.Save()
+}
+
+// SaveSetupInfo saves only the API key and friendly ID to the config file
+// Used after device registration to persist authentication without saving temporary flags
+func (c *Config) SaveSetupInfo() error {
+	// Load current config from disk
+	savedConfig, err := Load()
+	if err != nil {
+		// If config doesn't exist, create a new one
+		savedConfig = c
+	}
+
+	// Update only setup-related fields
+	savedConfig.APIKey = c.APIKey
+	savedConfig.FriendlyID = c.FriendlyID
+
+	// Save back
+	return savedConfig.Save()
 }
 
 // getConfigDir returns the configuration directory path

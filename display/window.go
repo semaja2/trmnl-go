@@ -108,26 +108,16 @@ func (w *Window) UpdateImage(imageData []byte) error {
 		fmt.Printf("[Display] Decoding image (%d bytes)\n", len(imageData))
 	}
 
-	// Decode image
-	img, _, err := image.Decode(bytes.NewReader(imageData))
+	// Apply transformations (rotation, dark mode, and/or e-paper mode)
+	transformedData, err := applyImageTransformations(imageData, w.config.Rotation, w.config.DarkMode, w.config.EPaperMode)
 	if err != nil {
-		return fmt.Errorf("failed to decode image: %w", err)
+		return err
 	}
 
-	// Apply rotation if enabled
-	if w.config.Rotation != 0 {
-		img = rotateImage(img, w.config.Rotation)
-		if w.verbose {
-			fmt.Printf("[Display] Applied rotation: %d degrees\n", w.config.Rotation)
-		}
-	}
-
-	// Apply dark mode if enabled
-	if w.config.DarkMode {
-		img = invertImage(img)
-		if w.verbose {
-			fmt.Println("[Display] Applied dark mode inversion")
-		}
+	// Decode the transformed image
+	img, _, err := image.Decode(bytes.NewReader(transformedData))
+	if err != nil {
+		return fmt.Errorf("failed to decode transformed image: %w", err)
 	}
 
 	// Update the image on the UI thread using Fyne's thread-safe method
@@ -137,6 +127,19 @@ func (w *Window) UpdateImage(imageData []byte) error {
 	})
 
 	if w.verbose {
+		effects := []string{}
+		if w.config.Rotation != 0 {
+			effects = append(effects, fmt.Sprintf("rotation: %d°", w.config.Rotation))
+		}
+		if w.config.DarkMode {
+			effects = append(effects, "dark mode")
+		}
+		if w.config.EPaperMode {
+			effects = append(effects, "e-paper")
+		}
+		if len(effects) > 0 {
+			fmt.Printf("[Display] Applied effects: %v\n", effects)
+		}
 		fmt.Printf("[Display] Image updated: %dx%d\n", img.Bounds().Dx(), img.Bounds().Dy())
 	}
 

@@ -41,6 +41,9 @@ var (
 	width        = flag.Int("width", 0, "Window width (overrides model default)")
 	height       = flag.Int("height", 0, "Window height (overrides model default)")
 	darkMode     = flag.Bool("dark", false, "Enable dark mode (invert colors)")
+	noDarkMode   = flag.Bool("no-dark", false, "Disable dark mode (overrides saved config)")
+	ePaperMode   = flag.Bool("epaper", false, "Enable e-paper mode (4-bit grayscale with dithering)")
+	noEPaperMode = flag.Bool("no-epaper", false, "Disable e-paper mode (overrides saved config)")
 	alwaysOnTop  = flag.Bool("always-on-top", false, "Keep window always on top (macOS only)")
 	fullscreen   = flag.Bool("fullscreen", false, "Enable fullscreen mode")
 	rotation     = flag.Int("rotation", 0, "Rotate image (degrees: 0, 90, 180, 270, or -90)")
@@ -172,8 +175,19 @@ func runGUIApp() {
 	if *height > 0 {
 		cfg.WindowHeight = *height
 	}
+	// Handle dark mode flags (explicit enable/disable overrides config)
 	if *darkMode {
 		cfg.DarkMode = true
+	}
+	if *noDarkMode {
+		cfg.DarkMode = false
+	}
+	// Handle e-paper mode flags (explicit enable/disable overrides config)
+	if *ePaperMode {
+		cfg.EPaperMode = true
+	}
+	if *noEPaperMode {
+		cfg.EPaperMode = false
 	}
 	if *alwaysOnTop {
 		cfg.AlwaysOnTop = true
@@ -292,6 +306,7 @@ func runGUIApp() {
 
 		fmt.Printf("Window: %dx%d\n", cfg.WindowWidth, cfg.WindowHeight)
 		fmt.Printf("Dark Mode: %v\n", cfg.DarkMode)
+		fmt.Printf("E-Paper Mode: %v\n", cfg.EPaperMode)
 		fmt.Printf("Mirror Mode: %v\n", cfg.MirrorMode)
 		batteryV := api.PercentageToVoltage(m.BatteryVoltage)
 		fmt.Printf("System: Battery %.1f%% (%.2fV), WiFi %d dBm\n", m.BatteryVoltage, batteryV, m.RSSI)
@@ -424,8 +439,9 @@ func (a *App) refreshLoop() {
 		a.config.APIKey = setupResp.APIKey
 		a.config.FriendlyID = setupResp.FriendlyID
 
-		// Save the updated config
-		if err := a.config.Save(); err != nil {
+		// Save only the setup info (API key and friendly ID)
+		// This preserves any other settings from flags without persisting them
+		if err := a.config.SaveSetupInfo(); err != nil {
 			log.Printf("Warning: Could not save config: %v", err)
 			a.logger.Warn("Failed to save config after setup", map[string]any{
 				"error": err.Error(),
@@ -613,8 +629,8 @@ func (a *App) rotateDisplay() {
 		fmt.Printf("[App] Rotation set to %d degrees\n", a.config.Rotation)
 	}
 
-	// Save the rotation to config
-	if err := a.config.Save(); err != nil && a.verbose {
+	// Save only the rotation setting (preserves other temporary flag settings)
+	if err := a.config.SaveRotation(); err != nil && a.verbose {
 		fmt.Printf("[App] Warning: Failed to save rotation to config: %v\n", err)
 	}
 

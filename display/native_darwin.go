@@ -254,10 +254,30 @@ func (w *NativeWindow) UpdateImage(imageData []byte) error {
 		return nil
 	}
 
-	// Apply transformations (rotation and/or dark mode)
-	transformedData, err := applyImageTransformations(imageData, w.config.Rotation, w.config.DarkMode)
+	if w.verbose {
+		fmt.Printf("[Display] Decoding image (%d bytes)\n", len(imageData))
+	}
+
+	// Apply transformations (rotation, dark mode, and/or e-paper mode)
+	transformedData, err := applyImageTransformations(imageData, w.config.Rotation, w.config.DarkMode, w.config.EPaperMode)
 	if err != nil {
 		return err
+	}
+
+	if w.verbose {
+		effects := []string{}
+		if w.config.Rotation != 0 {
+			effects = append(effects, fmt.Sprintf("rotation: %d°", w.config.Rotation))
+		}
+		if w.config.DarkMode {
+			effects = append(effects, "dark mode")
+		}
+		if w.config.EPaperMode {
+			effects = append(effects, "e-paper")
+		}
+		if len(effects) > 0 {
+			fmt.Printf("[Display] Applied effects: %v\n", effects)
+		}
 	}
 
 	// Pass image data to Objective-C

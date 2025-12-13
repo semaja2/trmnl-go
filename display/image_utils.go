@@ -6,6 +6,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
+	"math/rand"
 )
 
 // rotateImage rotates an image by the specified degrees (90, 180, 270)
@@ -76,11 +78,11 @@ func invertImage(img image.Image) image.Image {
 	return inverted
 }
 
-// applyImageTransformations applies rotation and dark mode transformations to image data
+// applyImageTransformations applies rotation, dark mode, and e-paper transformations to image data
 // Returns the transformed image data as PNG bytes
-func applyImageTransformations(imageData []byte, rotation int, darkMode bool) ([]byte, error) {
+func applyImageTransformations(imageData []byte, rotation int, darkMode bool, ePaperMode bool) ([]byte, error) {
 	// If no transformations needed, return original data
-	if rotation == 0 && !darkMode {
+	if rotation == 0 && !darkMode && !ePaperMode {
 		return imageData, nil
 	}
 
@@ -90,12 +92,17 @@ func applyImageTransformations(imageData []byte, rotation int, darkMode bool) ([
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
 
+	// Apply e-paper effect first (before rotation/inversion for best results)
+	if ePaperMode {
+		img = applyEPaperEffect(img)
+	}
+
 	// Apply rotation
 	if rotation != 0 {
 		img = rotateImage(img, rotation)
 	}
 
-	// Apply dark mode
+	// Apply dark mode (invert after e-paper effect)
 	if darkMode {
 		img = invertImage(img)
 	}
@@ -107,4 +114,106 @@ func applyImageTransformations(imageData []byte, rotation int, darkMode bool) ([
 	}
 
 	return buf.Bytes(), nil
+}
+
+// applyEPaperEffect simulates an e-paper/e-ink display appearance
+// - Converts to grayscale
+// - Reduces to 4-bit color depth (16 shades of gray)
+// - Applies Floyd-Steinberg dithering for smoother gradients
+// - Adds pronounced texture to simulate e-paper grain
+// - Adds warm tint for realistic off-white background
+func applyEPaperEffect(img image.Image) image.Image {
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Convert to grayscale and create error diffusion matrix
+	grayscale := image.NewGray(bounds)
+	errorMap := make([][]float64, height)
+	for i := range errorMap {
+		errorMap[i] = make([]float64, width)
+	}
+
+	// First pass: convert to grayscale
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			originalColor := img.At(x, y)
+			r, g, b, _ := originalColor.RGBA()
+
+			// Convert to grayscale using luminance formula
+			gray := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
+			gray = gray / 256.0 // Normalize to 0-255 range
+
+			grayscale.SetGray(x, y, color.Gray{Y: uint8(gray)})
+		}
+	}
+
+	// Second pass: Apply Floyd-Steinberg dithering and reduce to 4-bit (16 levels)
+	resultRGBA := image.NewRGBA(bounds)
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			oldPixel := float64(grayscale.GrayAt(x, y).Y)
+
+			// Add accumulated error from previous pixels
+			oldPixel += errorMap[y][x]
+
+			// Clamp to valid range
+			if oldPixel < 0 {
+				oldPixel = 0
+			}
+			if oldPixel > 255 {
+				oldPixel = 255
+			}
+
+			// Quantize to 16 levels (4-bit)
+			newPixel := math.Round(oldPixel/17.0) * 17.0 // 255/15 ≈ 17
+
+			// Add more pronounced texture noise (simulate e-paper grain)
+			noise := (rand.Float64() - 0.5) * 8.0 // ±4 intensity (increased from ±1.5)
+			newPixel += noise
+
+			// Clamp after noise
+			if newPixel < 0 {
+				newPixel = 0
+			}
+			if newPixel > 255 {
+				newPixel = 255
+			}
+
+			grayValue := uint8(newPixel)
+
+			// Apply warm tint for e-paper look (slightly yellowish/beige background)
+			// E-paper displays have an off-white background, not pure white
+			r := grayValue
+			g := grayValue
+			b := uint8(math.Max(0, float64(grayValue)-12)) // Reduce blue for warm tint
+
+			// Add slight yellow tint to whites/light grays
+			if grayValue > 200 {
+				tintStrength := (float64(grayValue) - 200.0) / 55.0 // 0 to 1 for pixels 200-255
+				g = uint8(math.Min(255, float64(g)+tintStrength*8))  // Add yellow
+			}
+
+			resultRGBA.SetRGBA(x, y, color.RGBA{R: r, G: g, B: b, A: 255})
+
+			// Calculate quantization error
+			quantError := oldPixel - newPixel
+
+			// Distribute error to neighboring pixels (Floyd-Steinberg)
+			if x+1 < width {
+				errorMap[y][x+1] += quantError * 7.0 / 16.0
+			}
+			if y+1 < height {
+				if x > 0 {
+					errorMap[y+1][x-1] += quantError * 3.0 / 16.0
+				}
+				errorMap[y+1][x] += quantError * 5.0 / 16.0
+				if x+1 < width {
+					errorMap[y+1][x+1] += quantError * 1.0 / 16.0
+				}
+			}
+		}
+	}
+
+	return resultRGBA
 }
