@@ -137,7 +137,7 @@ func (c *Client) FetchDisplay() (*TerminalResponse, error) {
 	batteryPercent := systemMetrics.BatteryVoltage // This is actually percentage (0-100)
 	batteryVoltage := PercentageToVoltage(batteryPercent)
 
-	req.Header.Set("percent_charged", fmt.Sprintf("%.2f", batteryPercent))
+	req.Header.Set("percent-charged", fmt.Sprintf("%.2f", batteryPercent))
 	req.Header.Set("Battery-Voltage", fmt.Sprintf("%.2f", batteryVoltage))
 	req.Header.Set("RSSI", fmt.Sprintf("%d", systemMetrics.RSSI))
 
@@ -309,7 +309,7 @@ func (c *Client) FetchCurrentScreen() (*TerminalResponse, error) {
 	batteryPercent := systemMetrics.BatteryVoltage
 	batteryVoltage := PercentageToVoltage(batteryPercent)
 
-	req.Header.Set("percent_charged", fmt.Sprintf("%.2f", batteryPercent))
+	req.Header.Set("percent-charged", fmt.Sprintf("%.2f", batteryPercent))
 	req.Header.Set("Battery-Voltage", fmt.Sprintf("%.2f", batteryVoltage))
 	req.Header.Set("RSSI", fmt.Sprintf("%d", systemMetrics.RSSI))
 	req.Header.Set("FW-Version", FirmwareVersion)
