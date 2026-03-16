@@ -228,12 +228,12 @@ func runGUIApp() {
 		if err != nil {
 			log.Printf("Warning: Could not detect MAC address: %v", err)
 			log.Println("Generating random MAC address instead")
-			cfg.DeviceID = generateRandomMAC()
+			cfg.DeviceID = strings.ToUpper(generateRandomMAC())
 			if cfg.Verbose {
 				log.Printf("Generated random MAC address: %s", cfg.DeviceID)
 			}
 		} else {
-			cfg.DeviceID = mac
+			cfg.DeviceID = strings.ToUpper(mac)
 			if cfg.Verbose {
 				ifaceName := metrics.GetPrimaryInterfaceName()
 				if *netInterface != "" {
